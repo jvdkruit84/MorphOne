@@ -1,85 +1,62 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "WavetableOscillator.h"
 
-// Simple sine wave synthesizer voice
-struct SineWaveSound : public juce::SynthesiserSound
+struct WavetableSound : public juce::SynthesiserSound
 {
-    bool appliesToNote(int) override { return true; }
+    bool appliesToNote(int) override    { return true; }
     bool appliesToChannel(int) override { return true; }
 };
 
-struct SineWaveVoice : public juce::SynthesiserVoice
+struct WavetableVoice : public juce::SynthesiserVoice
 {
-    bool canPlaySound(juce::SynthesiserSound* sound) override
+    bool canPlaySound(juce::SynthesiserSound* s) override
     {
-        return dynamic_cast<SineWaveSound*>(sound) != nullptr;
+        return dynamic_cast<WavetableSound*>(s) != nullptr;
     }
 
     void startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int) override
     {
-        currentAngle = 0.0;
-        level = velocity * 0.15;
-        tailOff = 0.0;
-
-        auto cyclesPerSecond = juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
-        auto cyclesPerSample = cyclesPerSecond / getSampleRate();
-        angleDelta = cyclesPerSample * juce::MathConstants<double>::twoPi;
+        oscillator.reset();
+        oscillator.setFrequency((float)juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber),
+                                (float)getSampleRate());
+        level = velocity * 0.15f;
+        adsr.setSampleRate(getSampleRate());
+        adsr.noteOn();
     }
 
     void stopNote(float, bool allowTailOff) override
     {
-        if (allowTailOff)
-            tailOff = 1.0;
-        else
-            clearCurrentNote();
+        adsr.noteOff();
+        if (!allowTailOff) { clearCurrentNote(); adsr.reset(); }
     }
+
+    void setMorph(float m)                           { oscillator.setMorph(m); }
+    void setADSR(const juce::ADSR::Parameters& p)   { adsr.setParameters(p); }
 
     void pitchWheelMoved(int) override {}
     void controllerMoved(int, int) override {}
 
-    void renderNextBlock(juce::AudioBuffer<float>& outputBuffer, int startSample, int numSamples) override
+    void renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples) override
     {
-        if (angleDelta == 0.0) return;
+        if (!adsr.isActive()) return;
 
-        if (tailOff > 0.0)
+        while (--numSamples >= 0)
         {
-            while (--numSamples >= 0)
-            {
-                auto sample = (float)(std::sin(currentAngle) * level * tailOff);
-                for (auto i = outputBuffer.getNumChannels(); --i >= 0;)
-                    outputBuffer.addSample(i, startSample, sample);
-
-                currentAngle += angleDelta;
-                ++startSample;
-
-                tailOff *= 0.9995;
-                if (tailOff <= 0.005)
-                {
-                    clearCurrentNote();
-                    angleDelta = 0.0;
-                    break;
-                }
-            }
+            float sample = oscillator.getNextSample() * level * adsr.getNextSample();
+            for (int ch = buffer.getNumChannels(); --ch >= 0;)
+                buffer.addSample(ch, startSample, sample);
+            ++startSample;
         }
-        else
-        {
-            while (--numSamples >= 0)
-            {
-                auto sample = (float)(std::sin(currentAngle) * level);
-                for (auto i = outputBuffer.getNumChannels(); --i >= 0;)
-                    outputBuffer.addSample(i, startSample, sample);
 
-                currentAngle += angleDelta;
-                ++startSample;
-            }
-        }
+        if (!adsr.isActive())
+            clearCurrentNote();
     }
 
 private:
-    double currentAngle = 0.0;
-    double angleDelta = 0.0;
-    double level = 0.0;
-    double tailOff = 0.0;
+    WavetableOscillator oscillator;
+    juce::ADSR adsr;
+    float level = 0.0f;
 };
 
 // Processor
@@ -96,20 +73,26 @@ MorphOneAudioProcessor::~MorphOneAudioProcessor() {}
 
 void MorphOneAudioProcessor::initialiseSynth()
 {
-    const int numVoices = 8;
-    for (int i = 0; i < numVoices; ++i)
-        synth.addVoice(new SineWaveVoice());
-    synth.addSound(new SineWaveSound());
+    for (int i = 0; i < 8; ++i)
+        synth.addVoice(new WavetableVoice());
+    synth.addSound(new WavetableSound());
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout MorphOneAudioProcessor::createParameters()
 {
-    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "GAIN", "Gain", 0.0f, 1.0f, 0.8f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("MORPH",   "Morph",   0.0f, 1.0f, 0.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("ATTACK",  "Attack",
+        juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.4f), 0.05f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("DECAY",   "Decay",
+        juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.4f), 0.1f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("SUSTAIN", "Sustain", 0.0f, 1.0f, 0.8f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("RELEASE", "Release",
+        juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.4f), 0.3f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("GAIN",    "Gain",    0.0f, 1.0f, 0.8f));
 
-    return { params.begin(), params.end() };
+    return { p.begin(), p.end() };
 }
 
 void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -120,15 +103,28 @@ void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
 void MorphOneAudioProcessor::releaseResources() {}
 
-void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    synth.renderNextBlock(buffer, midiMessages, 0, buffer.getNumSamples());
+    float morph   = apvts.getRawParameterValue("MORPH")->load();
+    juce::ADSR::Parameters adsrParams {
+        apvts.getRawParameterValue("ATTACK")->load(),
+        apvts.getRawParameterValue("DECAY")->load(),
+        apvts.getRawParameterValue("SUSTAIN")->load(),
+        apvts.getRawParameterValue("RELEASE")->load()
+    };
 
-    auto gain = apvts.getRawParameterValue("GAIN")->load();
-    buffer.applyGain(gain);
+    for (int i = 0; i < synth.getNumVoices(); ++i)
+        if (auto* v = dynamic_cast<WavetableVoice*>(synth.getVoice(i)))
+        {
+            v->setMorph(morph);
+            v->setADSR(adsrParams);
+        }
+
+    synth.renderNextBlock(buffer, midi, 0, buffer.getNumSamples());
+    buffer.applyGain(apvts.getRawParameterValue("GAIN")->load());
 }
 
 juce::AudioProcessorEditor* MorphOneAudioProcessor::createEditor()
@@ -145,9 +141,9 @@ void MorphOneAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 
 void MorphOneAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
-    if (xmlState != nullptr && xmlState->hasTagName(apvts.state.getType()))
-        apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
+    if (xml && xml->hasTagName(apvts.state.getType()))
+        apvts.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
