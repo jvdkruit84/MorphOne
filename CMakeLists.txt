@@ -10,7 +10,7 @@ juce_add_plugin(MorphOne
     PLUGIN_MANUFACTURER_CODE Jvdx
     PLUGIN_CODE Mrp1
     FORMATS VST3 Standalone
-    PRODUCT_NAME "Morph::One"
+    PRODUCT_NAME "MorphOne"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE

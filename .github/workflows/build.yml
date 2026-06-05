@@ -33,7 +33,6 @@ jobs:
       - name: Package
         run: |
           cd build/MorphOne_artefacts/Release/VST3
-          mv "Morph::One.vst3" "MorphOne.vst3"
           zip -r MorphOne-linux.zip MorphOne.vst3
 
       - name: Upload to release
