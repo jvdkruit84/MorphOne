@@ -33,7 +33,8 @@ jobs:
       - name: Package
         run: |
           cd build/MorphOne_artefacts/Release/VST3
-          zip -r MorphOne-linux.zip .
+          mv "Morph::One.vst3" "MorphOne.vst3"
+          zip -r MorphOne-linux.zip MorphOne.vst3
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
