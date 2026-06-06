@@ -12,7 +12,7 @@ void VisualKeyboard::paint(juce::Graphics& g)
     const auto& sc = TheoryEngine::SCALE_INTERVALS[juce::jlimit(0, 14, si)];
 
     auto lb = getLocalBounds().toFloat();
-    g.setColour(juce::Colour(0xff0a0a18));
+    g.setColour(juce::Colour(0xff0a0a0a));
     g.fillRoundedRectangle(lb, 5.f);
     g.setColour(juce::Colour(Pal::border));
     g.drawRoundedRectangle(lb.reduced(0.5f), 5.f, 0.7f);
@@ -53,28 +53,29 @@ void VisualKeyboard::paint(juce::Graphics& g)
 
         if (held)
         {
-            g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.4f));
+            g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.5f));
             g.fillRoundedRectangle(wkr.expanded(2.f), 3.f);
             g.setColour(juce::Colour(Pal::accentHi));
         }
         else if (isroot)
-            g.setColour(juce::Colour(0xff7020b0));  // bright root purple
+            g.setColour(juce::Colour(Pal::accent));  // blue root key
         else if (inscale)
-            g.setColour(juce::Colour(0xff3a3070));  // purple-tinted, visible
+            g.setColour(juce::Colour(0xffccdcf8));   // light blue tint — still looks white
         else
-            g.setColour(juce::Colour(0xff303050));  // white key: clearly lighter than black
+            g.setColour(juce::Colour(0xfff0f0f0));   // plain white key
 
         g.fillRoundedRectangle(wkr, 2.f);
-        g.setColour(juce::Colour(Pal::border));
+        g.setColour(juce::Colour(0xff444444));
         g.drawRoundedRectangle(wkr, 2.f, 0.6f);
 
-        // Note label for root and C notes
+        // Note label at bottom of C keys and root key
         if (isroot || (wi % 7 == 0))
         {
             static const char* nn[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
             g.setFont(juce::FontOptions(6.5f));
-            g.setColour(held   ? juce::Colours::white :
-                        isroot ? juce::Colour(Pal::accentHi) : juce::Colour(Pal::textLow));
+            g.setColour(held   ? juce::Colours::black :
+                        isroot ? juce::Colours::white :
+                                 juce::Colour(0xff404040));
             g.drawText(nn[midiPc],
                        juce::Rectangle<float>(kx, inner.getBottom() - 11.f, ww, 11.f),
                        juce::Justification::centred);
@@ -97,19 +98,19 @@ void VisualKeyboard::paint(juce::Graphics& g)
 
             if (held)
             {
-                g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.4f));
+                g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.5f));
                 g.fillRoundedRectangle(bkey.expanded(2.f), 2.f);
                 g.setColour(juce::Colour(Pal::accentHi));
             }
             else if (root)
-                g.setColour(juce::Colour(0xff3c0a78));  // root purple on black key
+                g.setColour(juce::Colour(0xff083880));  // dark blue root on black key
             else if (inscale)
-                g.setColour(juce::Colour(0xff1e1840));  // subtle purple tint
+                g.setColour(juce::Colour(0xff182038));  // dark blue tint
             else
-                g.setColour(juce::Colour(0xff080812));  // very dark — clearly black
+                g.setColour(juce::Colour(0xff111111));  // plain black
 
             g.fillRoundedRectangle(bkey, 2.f);
-            g.setColour(juce::Colour(Pal::borderHi).withAlpha(0.5f));
+            g.setColour(juce::Colour(0xff505050).withAlpha(0.6f));
             g.drawRoundedRectangle(bkey, 2.f, 0.5f);
         }
     }
@@ -129,7 +130,7 @@ void LiveChordPanel::paint(juce::Graphics& g)
     float pw  = lb.getWidth() - 16.f;
 
     // Outer border with purple accent
-    g.setColour(juce::Colour(0xff131328));
+    g.setColour(juce::Colour(0xff0d0d18));
     g.fillRoundedRectangle(lb, 6.f);
     g.setColour(juce::Colour(Pal::accent));
     g.drawRoundedRectangle(lb.reduced(0.5f), 6.f, 1.4f);
@@ -197,7 +198,7 @@ void LiveChordPanel::paint(juce::Graphics& g)
         {
             g.setColour(juce::Colour(Pal::pillIn));
             g.fillRoundedRectangle(pill, 4.f);
-            g.setColour(juce::Colour(0xff5a3a8a));
+            g.setColour(juce::Colour(0xff284890));
             g.drawRoundedRectangle(pill.reduced(0.5f), 4.f, 0.6f);
         }
         else
@@ -208,7 +209,7 @@ void LiveChordPanel::paint(juce::Graphics& g)
         g.setFont(juce::FontOptions(7.f, inscale ? juce::Font::bold : 0));
         g.setColour(active ? juce::Colours::white :
                     root   ? juce::Colours::white :
-                    inscale ? juce::Colour(0xffcc99ff) : juce::Colour(0xff2a2a45));
+                    inscale ? juce::Colour(0xff90c0ff) : juce::Colour(0xff303050));
         g.drawText(kn[i], pill, juce::Justification::centred);
     }
 }
@@ -244,8 +245,8 @@ void NextSuggestionsPanel::paint(juce::Graphics& g)
         float cx = 8.f + i * (cardW + 4.f);
         juce::Rectangle<float> card(cx, 18.f, cardW, cardH);
 
-        juce::ColourGradient cg(juce::Colour(0xff242244), cx, 18.f,
-                                juce::Colour(0xff141430), cx, 18.f + cardH, false);
+        juce::ColourGradient cg(juce::Colour(0xff182038), cx, 18.f,
+                                juce::Colour(0xff0e1020), cx, 18.f + cardH, false);
         g.setGradientFill(cg);
         g.fillRoundedRectangle(card, 5.f);
         g.setColour(juce::Colour(Pal::border));
@@ -348,7 +349,7 @@ void CoachDisplay::paint(juce::Graphics& g)
     if (tipH > 20.f)
     {
         juce::Rectangle<float> tipBox(x, y, bw, tipH);
-        g.setColour(juce::Colour(0xff0e0e1e));
+        g.setColour(juce::Colour(0xff0a0c18));
         g.fillRoundedRectangle(tipBox, 4.f);
         g.setColour(juce::Colour(Pal::border));
         g.drawRoundedRectangle(tipBox.reduced(0.5f), 4.f, 0.6f);
@@ -450,9 +451,19 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
 
     modeSelector.onChange = [this](int mode)
     {
+        // Auto-load the first preset of this category
+        const auto& ps = PresetManager::getPresets();
+        for (int i = 0; i < (int)ps.size(); ++i)
+        {
+            if (ps[i].synthMode == mode)
+            {
+                PresetManager::applyPreset(ps[i], audioProcessor.apvts);
+                presetBox.setSelectedId(i + 2, juce::dontSendNotification);
+                return;
+            }
+        }
+        // Fallback: no preset found for this mode, just set it
         setIntParam("SYNTH_MODE", mode);
-        if (mode == 1 && getIntParam("OCTAVE") == 0)  setIntParam("OCTAVE", -1);
-        if (mode == 0 && getIntParam("OCTAVE") == -1) setIntParam("OCTAVE",  0);
     };
 
     addAndMakeVisible(modeSelector);
@@ -533,7 +544,7 @@ void MorphOneAudioProcessorEditor::paintSection(juce::Graphics& g,
     juce::Rectangle<int> titleBar(b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 20);
     juce::ColourGradient tbg(juce::Colour(highlight ? 0xff321a58 : 0xff28283e),
                              0, titleBar.getY(),
-                             juce::Colour(0xff18182e), 0, titleBar.getBottom(), false);
+                             juce::Colour(0xff12121e), 0, titleBar.getBottom(), false);
     g.setGradientFill(tbg);
     g.fillRect(titleBar);
     g.setColour(juce::Colour(highlight ? Pal::accent : Pal::border));

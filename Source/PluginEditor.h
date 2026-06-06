@@ -10,20 +10,20 @@
 namespace Pal
 {
     constexpr juce::uint32
-        bg         = 0xff0d0d1e,
-        bgSection  = 0xff1c1c34,
-        bgDark     = 0xff090914,
-        border     = 0xff484878,   // brighter so sections are visible
-        borderHi   = 0xff6868a8,
-        accent     = 0xff9540d0,   // lighter purple
-        accentHi   = 0xffbc6afc,   // lighter purple highlight
-        accentLo   = 0xff5a2298,
-        textHi     = 0xfff0f0ff,   // bright white
-        textMid    = 0xffbcbcd8,   // readable mid grey
-        textLow    = 0xff8080aa,   // was near-invisible, now readable
-        pillIn     = 0xff4c3890,   // more visible in-scale pill
-        pillRoot   = 0xff9540d0,
-        pillOut    = 0xff1e1e36;
+        bg         = 0xff08080e,
+        bgSection  = 0xff141422,
+        bgDark     = 0xff060608,
+        border     = 0xff303060,
+        borderHi   = 0xff4858a0,
+        accent     = 0xff1a72e0,   // blue — no purple
+        accentHi   = 0xff4da8ff,   // light blue
+        accentLo   = 0xff0a3888,   // dark blue
+        textHi     = 0xffffffff,
+        textMid    = 0xffb8c8e0,
+        textLow    = 0xff6878a0,
+        pillIn     = 0xff1a3870,   // blue in-scale pill
+        pillRoot   = 0xff1a72e0,   // blue root pill
+        pillOut    = 0xff111120;
 }
 
 // ── Custom LookAndFeel ────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ public:
 
         juce::Path track;
         track.addCentredArc(cx, cy, r - aw * 0.5f, r - aw * 0.5f, 0.f, startAngle, endAngle, true);
-        g.setColour(juce::Colour(0xff1c1c38));
+        g.setColour(juce::Colour(0xff181828));
         g.strokePath(track, juce::PathStrokeType(aw, juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
 
@@ -73,15 +73,15 @@ public:
             g.strokePath(arc, juce::PathStrokeType(aw * 2.6f, juce::PathStrokeType::curved,
                                                     juce::PathStrokeType::rounded));
             juce::ColourGradient ag(juce::Colour(Pal::accentHi), cx - r, cy,
-                                    juce::Colour(0xff5060cc), cx + r, cy, false);
+                                    juce::Colour(0xff1850c0), cx + r, cy, false);
             g.setGradientFill(ag);
             g.strokePath(arc, juce::PathStrokeType(aw, juce::PathStrokeType::curved,
                                                     juce::PathStrokeType::rounded));
         }
 
         float kr = r - aw * 2.0f;
-        juce::ColourGradient body(juce::Colour(0xff3c3c62), cx - kr * 0.35f, cy - kr * 0.35f,
-                                  juce::Colour(0xff111122), cx + kr * 0.35f, cy + kr * 0.35f, false);
+        juce::ColourGradient body(juce::Colour(0xff303040), cx - kr * 0.35f, cy - kr * 0.35f,
+                                  juce::Colour(0xff0c0c14), cx + kr * 0.35f, cy + kr * 0.35f, false);
         g.setGradientFill(body);
         g.fillEllipse(cx - kr, cy - kr, kr * 2.f, kr * 2.f);
         g.setColour(juce::Colour(Pal::borderHi));
@@ -299,7 +299,7 @@ private:
     {
         switch (m) {
             case Mood::Uplifting:   return { "UPLIFTING",   juce::Colour(0xff4a9eff) };
-            case Mood::Melancholic: return { "MELANCHOLIC", juce::Colour(0xff9b4fde) };
+            case Mood::Melancholic: return { "MELANCHOLIC", juce::Colour(0xff4060d8) };
             case Mood::Tensive:     return { "TENSIVE",     juce::Colour(0xffee6633) };
             case Mood::Nostalgic:   return { "NOSTALGIC",   juce::Colour(0xff44cc88) };
         }
