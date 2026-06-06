@@ -40,7 +40,7 @@ void CoachDisplay::paint(juce::Graphics& g)
     float badgeY = y + 28.f;
     auto drawBadge = [&](const juce::String& txt, juce::Colour col)
     {
-        float tw = g.getCurrentFont().getStringWidth(txt) + 10.f;
+        float tw = (float)txt.length() * 6.2f + 10.f;
         juce::Rectangle<float> bb(badgeX, badgeY, tw, 14.f);
         g.setColour(col.withAlpha(0.2f));
         g.fillRoundedRectangle(bb, 7.f);
