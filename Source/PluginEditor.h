@@ -5,6 +5,7 @@
 #include "PresetManager.h"
 #include "TheoryEngine.h"
 #include "ChordDetector.h"
+#include "BinaryData.h"
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 namespace Pal
@@ -406,6 +407,8 @@ private:
     juce::ToggleButton arpOnBtn     { "On"   };
 
     std::unique_ptr<BtnAttach> scaleLockAtt, arpOnAtt;
+
+    juce::Image shotMusicLogo;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MorphOneAudioProcessorEditor)
 };

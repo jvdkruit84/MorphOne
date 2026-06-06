@@ -512,6 +512,9 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
     progChordBox.onChange = [this]{ setIntParam("PROG_CHORD", progChordBox.getSelectedId()); };
 
     for (auto* btn : { &scaleLockBtn, &arpOnBtn }) addAndMakeVisible(btn);
+    shotMusicLogo = juce::ImageCache::getFromMemory(BinaryData::shotmusic_png,
+                                                    BinaryData::shotmusic_pngSize);
+
     syncCombosFromApvts();
     startTimerHz(10);
     setSize(960, 700);
@@ -584,7 +587,15 @@ void MorphOneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("::One", 110, 8, 86, 38, juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(8.f));
     g.setColour(juce::Colour(Pal::textLow));
-    g.drawText("v1.3.0", getWidth() - 54, 40, 48, 12, juce::Justification::centredRight);
+    g.drawText("v1.3.3", getWidth() - 54, 40, 48, 12, juce::Justification::centredRight);
+
+    if (shotMusicLogo.isValid())
+    {
+        g.setOpacity(0.90f);
+        g.drawImageWithin(shotMusicLogo, 780, 8, 142, 36,
+            juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize);
+        g.setOpacity(1.0f);
+    }
 
     // Preset strip
     g.setColour(juce::Colour(0xff0c0c1e));

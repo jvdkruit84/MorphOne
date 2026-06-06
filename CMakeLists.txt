@@ -17,9 +17,17 @@ juce_add_plugin(MorphOne
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
+    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/icon.png"
 )
 
 juce_generate_juce_header(MorphOne)
+
+# Embed images as binary data accessible via BinaryData::
+juce_add_binary_data(MorphOneAssets SOURCES
+    icon.png
+    shotmusic.png
+)
 
 target_sources(MorphOne PRIVATE
     Source/PluginProcessor.cpp
@@ -41,6 +49,7 @@ target_compile_definitions(MorphOne PUBLIC
 )
 
 target_link_libraries(MorphOne PRIVATE
+    MorphOneAssets
     juce::juce_audio_utils
     juce::juce_audio_processors
     juce::juce_dsp
