@@ -27,6 +27,7 @@ target_sources(MorphOne PRIVATE
     Source/WavetableOscillator.h
     Source/PluginProcessor.h
     Source/PluginEditor.h
+    Source/PresetManager.h
 )
 
 target_compile_definitions(MorphOne PUBLIC

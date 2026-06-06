@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "WavetableOscillator.h"
+#include "PresetManager.h"
 
 // Animated waveform display
 class WavetableDisplay : public juce::Component, private juce::Timer
@@ -22,7 +23,6 @@ public:
         g.setColour(juce::Colour(0xff1e1e3a));
         g.drawRect(getLocalBounds());
 
-        // Waveform
         auto b = getLocalBounds().reduced(3).toFloat();
         juce::Path path;
         int w = getWidth();
@@ -38,10 +38,8 @@ public:
         g.setGradientFill(lineGrad);
         g.strokePath(path, juce::PathStrokeType(2.0f));
 
-        // Waveform name label
         const char* names[] = { "SINE", "TRIANGLE", "SAW", "SQUARE" };
-        float pos = morph * 3.0f;
-        int idx = juce::jlimit(0, 3, (int)std::round(pos));
+        int idx = juce::jlimit(0, 3, (int)std::round(morph * 3.0f));
         g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
         g.setColour(juce::Colour(0xff7b5fae));
         g.drawText(names[idx], getLocalBounds().reduced(4), juce::Justification::bottomRight);
@@ -99,21 +97,25 @@ public:
 private:
     MorphOneAudioProcessor& audioProcessor;
 
+    // Preset bar
+    juce::ComboBox presetBox;
+
+    // Sections
     WavetableDisplay waveDisplay;
 
-    KnobWithLabel morphKnob   { "Morph"    };
-    KnobWithLabel cutoffKnob  { "Cutoff"   };
-    KnobWithLabel resKnob     { "Res"      };
-    KnobWithLabel attackKnob  { "Attack"   };
-    KnobWithLabel decayKnob   { "Decay"    };
-    KnobWithLabel sustainKnob { "Sustain"  };
-    KnobWithLabel releaseKnob { "Release"  };
-    KnobWithLabel unisonKnob  { "Voices", true };
-    KnobWithLabel detuneKnob  { "Detune"   };
-    KnobWithLabel lfoRateKnob { "Rate"     };
-    KnobWithLabel lfoDepthKnob{ "Depth"    };
-    KnobWithLabel reverbKnob  { "Reverb"   };
-    KnobWithLabel gainKnob    { "Gain"     };
+    KnobWithLabel morphKnob    { "Morph"   };
+    KnobWithLabel cutoffKnob   { "Cutoff"  };
+    KnobWithLabel resKnob      { "Res"     };
+    KnobWithLabel attackKnob   { "Attack"  };
+    KnobWithLabel decayKnob    { "Decay"   };
+    KnobWithLabel sustainKnob  { "Sustain" };
+    KnobWithLabel releaseKnob  { "Release" };
+    KnobWithLabel unisonKnob   { "Voices", true };
+    KnobWithLabel detuneKnob   { "Detune"  };
+    KnobWithLabel lfoRateKnob  { "Rate"    };
+    KnobWithLabel lfoDepthKnob { "Depth"   };
+    KnobWithLabel reverbKnob   { "Reverb"  };
+    KnobWithLabel gainKnob     { "Gain"    };
 
     using Attach = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<Attach> morphAtt, cutoffAtt, resAtt, attackAtt, decayAtt,

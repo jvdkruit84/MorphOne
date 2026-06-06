@@ -10,19 +10,38 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
 {
     auto& apvts = audioProcessor.apvts;
 
-    morphAtt    = std::make_unique<Attach>(apvts, "MORPH",        morphKnob.slider);
-    cutoffAtt   = std::make_unique<Attach>(apvts, "FILTER_CUTOFF",cutoffKnob.slider);
-    resAtt      = std::make_unique<Attach>(apvts, "FILTER_RES",   resKnob.slider);
-    attackAtt   = std::make_unique<Attach>(apvts, "ATTACK",       attackKnob.slider);
-    decayAtt    = std::make_unique<Attach>(apvts, "DECAY",        decayKnob.slider);
-    sustainAtt  = std::make_unique<Attach>(apvts, "SUSTAIN",      sustainKnob.slider);
-    releaseAtt  = std::make_unique<Attach>(apvts, "RELEASE",      releaseKnob.slider);
-    unisonAtt   = std::make_unique<Attach>(apvts, "UNISON",       unisonKnob.slider);
-    detuneAtt   = std::make_unique<Attach>(apvts, "DETUNE",       detuneKnob.slider);
-    lfoRateAtt  = std::make_unique<Attach>(apvts, "LFO_RATE",     lfoRateKnob.slider);
-    lfoDepthAtt = std::make_unique<Attach>(apvts, "LFO_DEPTH",    lfoDepthKnob.slider);
-    reverbAtt   = std::make_unique<Attach>(apvts, "REVERB_MIX",   reverbKnob.slider);
-    gainAtt     = std::make_unique<Attach>(apvts, "GAIN",         gainKnob.slider);
+    morphAtt    = std::make_unique<Attach>(apvts, "MORPH",         morphKnob.slider);
+    cutoffAtt   = std::make_unique<Attach>(apvts, "FILTER_CUTOFF", cutoffKnob.slider);
+    resAtt      = std::make_unique<Attach>(apvts, "FILTER_RES",    resKnob.slider);
+    attackAtt   = std::make_unique<Attach>(apvts, "ATTACK",        attackKnob.slider);
+    decayAtt    = std::make_unique<Attach>(apvts, "DECAY",         decayKnob.slider);
+    sustainAtt  = std::make_unique<Attach>(apvts, "SUSTAIN",       sustainKnob.slider);
+    releaseAtt  = std::make_unique<Attach>(apvts, "RELEASE",       releaseKnob.slider);
+    unisonAtt   = std::make_unique<Attach>(apvts, "UNISON",        unisonKnob.slider);
+    detuneAtt   = std::make_unique<Attach>(apvts, "DETUNE",        detuneKnob.slider);
+    lfoRateAtt  = std::make_unique<Attach>(apvts, "LFO_RATE",      lfoRateKnob.slider);
+    lfoDepthAtt = std::make_unique<Attach>(apvts, "LFO_DEPTH",     lfoDepthKnob.slider);
+    reverbAtt   = std::make_unique<Attach>(apvts, "REVERB_MIX",    reverbKnob.slider);
+    gainAtt     = std::make_unique<Attach>(apvts, "GAIN",          gainKnob.slider);
+
+    // Preset dropdown
+    presetBox.addItem("-- Select Preset --", 1);
+    const auto& presets = PresetManager::getPresets();
+    for (int i = 0; i < (int)presets.size(); ++i)
+        presetBox.addItem(presets[i].name, i + 2);
+    presetBox.setSelectedId(1, juce::dontSendNotification);
+    presetBox.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1a1a38));
+    presetBox.setColour(juce::ComboBox::textColourId,       juce::Colours::white);
+    presetBox.setColour(juce::ComboBox::outlineColourId,    juce::Colour(0xff3a3a60));
+    presetBox.setColour(juce::ComboBox::arrowColourId,      accentColour);
+    presetBox.onChange = [this]
+    {
+        int idx = presetBox.getSelectedId() - 2;
+        const auto& ps = PresetManager::getPresets();
+        if (idx >= 0 && idx < (int)ps.size())
+            PresetManager::applyPreset(ps[idx], audioProcessor.apvts);
+    };
+    addAndMakeVisible(presetBox);
 
     addAndMakeVisible(waveDisplay);
     for (auto* k : { &morphKnob, &cutoffKnob, &resKnob, &attackKnob, &decayKnob,
@@ -30,7 +49,7 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
                      &lfoRateKnob, &lfoDepthKnob, &reverbKnob, &gainKnob })
         addAndMakeVisible(k);
 
-    setSize(720, 370);
+    setSize(720, 400);
 }
 
 MorphOneAudioProcessorEditor::~MorphOneAudioProcessorEditor() {}
@@ -43,7 +62,6 @@ void MorphOneAudioProcessorEditor::paintSection(juce::Graphics& g,
     g.fillRoundedRectangle(bounds.toFloat(), 6.0f);
     g.setColour(juce::Colour(0xff242448));
     g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), 6.0f, 1.0f);
-
     g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
     g.setColour(labelColour);
     g.drawText(title, bounds.removeFromTop(18), juce::Justification::centred);
@@ -53,11 +71,20 @@ void MorphOneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(bgColour);
 
-    // Header gradient
-    juce::ColourGradient hdr(juce::Colour(0xff1c1c40), 0, 0,
-                             bgColour, 0, 46, false);
+    // Header
+    juce::ColourGradient hdr(juce::Colour(0xff1c1c40), 0, 0, bgColour, 0, 46, false);
     g.setGradientFill(hdr);
     g.fillRect(0, 0, getWidth(), 46);
+
+    // Preset strip
+    g.setColour(juce::Colour(0xff0e0e24));
+    g.fillRect(0, 46, getWidth(), 34);
+    g.setColour(juce::Colour(0xff1e1e3e));
+    g.drawLine(0, 46, (float)getWidth(), 46, 1.0f);
+    g.drawLine(0, 80, (float)getWidth(), 80, 1.0f);
+    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    g.setColour(labelColour);
+    g.drawText("PRESET", 16, 52, 55, 20, juce::Justification::centredLeft);
 
     // Title
     g.setFont(juce::FontOptions(26.0f, juce::Font::bold));
@@ -67,54 +94,55 @@ void MorphOneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("::One", 102, 7, 80, 32, juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(9.0f));
     g.setColour(juce::Colour(0xff333355));
-    g.drawText("v0.3.0", getWidth() - 52, 32, 46, 12, juce::Justification::centredRight);
+    g.drawText("v0.4.0", getWidth() - 52, 32, 46, 12, juce::Justification::centredRight);
 
-    // Section backgrounds (positions match resized())
-    paintSection(g, { 8,   48, 195, 202 }, "OSCILLATOR");
-    paintSection(g, { 211, 48, 155, 202 }, "FILTER");
-    paintSection(g, { 374, 48, 338, 202 }, "ENVELOPE");
-    paintSection(g, { 8,   258, 170, 104 }, "UNISON");
-    paintSection(g, { 186, 258, 170, 104 }, "LFO");
-    paintSection(g, { 364, 258, 170, 104 }, "FX");
-    paintSection(g, { 542, 258, 170, 104 }, "OUTPUT");
+    // Section boxes (y starts at 84)
+    paintSection(g, {   8, 84, 195, 202 }, "OSCILLATOR");
+    paintSection(g, { 211, 84, 155, 202 }, "FILTER");
+    paintSection(g, { 374, 84, 338, 202 }, "ENVELOPE");
+    paintSection(g, {   8, 294, 170, 98 }, "UNISON");
+    paintSection(g, { 186, 294, 170, 98 }, "LFO");
+    paintSection(g, { 364, 294, 170, 98 }, "FX");
+    paintSection(g, { 542, 294, 170, 98 }, "OUTPUT");
 }
 
 void MorphOneAudioProcessorEditor::resized()
 {
-    const int headerH = 48;
-    const int topH    = 202;
-    const int botY    = 258;
-    const int botH    = 104;
-    const int knobH   = botH - 20;
+    // Preset bar
+    presetBox.setBounds(76, 52, 490, 24);
 
-    // ── OSC section ──────────────────────────────
-    waveDisplay.setBounds(12, headerH + 18, 187, 105);
-    morphKnob.setBounds  (47, headerH + 126, 117, topH - 128);
+    const int topY = 84;
+    const int topH = 202;
+    const int botY = 294;
+    const int botH = 98;
 
-    // ── FILTER section ───────────────────────────
-    const int fX = 213;
-    cutoffKnob.setBounds(fX,      headerH + 16, 73, topH - 18);
-    resKnob.setBounds   (fX + 75, headerH + 16, 73, topH - 18);
+    // OSC
+    waveDisplay.setBounds(12, topY + 18, 187, 104);
+    morphKnob.setBounds  (47, topY + 126, 117, topH - 128);
 
-    // ── ENVELOPE section ─────────────────────────
-    const int eX = 376;
-    const int eW = 82;
-    attackKnob.setBounds (eX,          headerH + 16, eW, topH - 18);
-    decayKnob.setBounds  (eX + eW,     headerH + 16, eW, topH - 18);
-    sustainKnob.setBounds(eX + eW * 2, headerH + 16, eW, topH - 18);
-    releaseKnob.setBounds(eX + eW * 3, headerH + 16, eW, topH - 18);
+    // Filter
+    cutoffKnob.setBounds(213,      topY + 16, 75, topH - 18);
+    resKnob.setBounds   (213 + 77, topY + 16, 75, topH - 18);
 
-    // ── UNISON section ───────────────────────────
+    // Envelope
+    const int eX = 376, eW = 82;
+    attackKnob.setBounds (eX,          topY + 16, eW, topH - 18);
+    decayKnob.setBounds  (eX + eW,     topY + 16, eW, topH - 18);
+    sustainKnob.setBounds(eX + eW * 2, topY + 16, eW, topH - 18);
+    releaseKnob.setBounds(eX + eW * 3, topY + 16, eW, topH - 18);
+
+    // Unison
+    const int knobH = botH - 20;
     unisonKnob.setBounds (12,  botY + 18, 78, knobH);
     detuneKnob.setBounds (96,  botY + 18, 78, knobH);
 
-    // ── LFO section ──────────────────────────────
+    // LFO
     lfoRateKnob.setBounds (190, botY + 18, 78, knobH);
     lfoDepthKnob.setBounds(274, botY + 18, 78, knobH);
 
-    // ── FX section ───────────────────────────────
+    // FX
     reverbKnob.setBounds(404, botY + 18, 90, knobH);
 
-    // ── OUTPUT section ───────────────────────────
+    // Output
     gainKnob.setBounds(582, botY + 18, 90, knobH);
 }
