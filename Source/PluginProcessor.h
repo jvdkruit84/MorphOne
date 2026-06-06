@@ -18,7 +18,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 2.0; }
+    double getTailLengthSeconds() const override { return 3.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -36,6 +36,11 @@ private:
     void initialiseSynth();
 
     juce::Synthesiser synth;
+    juce::dsp::StateVariableTPTFilter<float> filter;
+    juce::dsp::Reverb reverb;
+
+    float  lfoPhase         = 0.0f;
+    double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MorphOneAudioProcessor)
 };
