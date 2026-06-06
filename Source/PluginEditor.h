@@ -10,20 +10,20 @@
 namespace Pal
 {
     constexpr juce::uint32
-        bg         = 0xff0b0b1a,
-        bgSection  = 0xff121224,
-        bgDark     = 0xff080814,
-        border     = 0xff2a2a4a,
-        borderHi   = 0xff3e3e70,
-        accent     = 0xff7b2fbe,
-        accentHi   = 0xff9b4fde,
-        accentLo   = 0xff4a1a80,
-        textHi     = 0xffddddff,
-        textMid    = 0xff9999bb,
-        textLow    = 0xff555577,
-        pillIn     = 0xff3a2a5a,
-        pillRoot   = 0xff7b2fbe,
-        pillOut    = 0xff181828;
+        bg         = 0xff0d0d1e,
+        bgSection  = 0xff1c1c34,
+        bgDark     = 0xff090914,
+        border     = 0xff484878,   // brighter so sections are visible
+        borderHi   = 0xff6868a8,
+        accent     = 0xff9540d0,   // lighter purple
+        accentHi   = 0xffbc6afc,   // lighter purple highlight
+        accentLo   = 0xff5a2298,
+        textHi     = 0xfff0f0ff,   // bright white
+        textMid    = 0xffbcbcd8,   // readable mid grey
+        textLow    = 0xff8080aa,   // was near-invisible, now readable
+        pillIn     = 0xff4c3890,   // more visible in-scale pill
+        pillRoot   = 0xff9540d0,
+        pillOut    = 0xff1e1e36;
 }
 
 // ── Custom LookAndFeel ────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ public:
         label.setText(name, juce::dontSendNotification);
         label.setJustificationType(juce::Justification::centred);
         label.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        label.setColour(juce::Label::textColourId, juce::Colour(Pal::textLow));
+        label.setColour(juce::Label::textColourId, juce::Colour(Pal::textMid));
         addAndMakeVisible(label);
     }
     void resized() override

@@ -53,20 +53,20 @@ void VisualKeyboard::paint(juce::Graphics& g)
 
         if (held)
         {
-            g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.25f));
+            g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.4f));
             g.fillRoundedRectangle(wkr.expanded(2.f), 3.f);
             g.setColour(juce::Colour(Pal::accentHi));
         }
         else if (isroot)
-            g.setColour(juce::Colour(0xff2a1040));
+            g.setColour(juce::Colour(0xff7020b0));  // bright root purple
         else if (inscale)
-            g.setColour(juce::Colour(0xff181830));
+            g.setColour(juce::Colour(0xff3a3070));  // purple-tinted, visible
         else
-            g.setColour(juce::Colour(0xff111122));
+            g.setColour(juce::Colour(0xff303050));  // white key: clearly lighter than black
 
         g.fillRoundedRectangle(wkr, 2.f);
         g.setColour(juce::Colour(Pal::border));
-        g.drawRoundedRectangle(wkr, 2.f, 0.5f);
+        g.drawRoundedRectangle(wkr, 2.f, 0.6f);
 
         // Note label for root and C notes
         if (isroot || (wi % 7 == 0))
@@ -97,19 +97,19 @@ void VisualKeyboard::paint(juce::Graphics& g)
 
             if (held)
             {
-                g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.25f));
+                g.setColour(juce::Colour(Pal::accentHi).withAlpha(0.4f));
                 g.fillRoundedRectangle(bkey.expanded(2.f), 2.f);
                 g.setColour(juce::Colour(Pal::accentHi));
             }
             else if (root)
-                g.setColour(juce::Colour(0xff380e60));
+                g.setColour(juce::Colour(0xff3c0a78));  // root purple on black key
             else if (inscale)
-                g.setColour(juce::Colour(0xff181828));
+                g.setColour(juce::Colour(0xff1e1840));  // subtle purple tint
             else
-                g.setColour(juce::Colour(0xff080810));
+                g.setColour(juce::Colour(0xff080812));  // very dark — clearly black
 
             g.fillRoundedRectangle(bkey, 2.f);
-            g.setColour(juce::Colour(Pal::borderHi).withAlpha(0.4f));
+            g.setColour(juce::Colour(Pal::borderHi).withAlpha(0.5f));
             g.drawRoundedRectangle(bkey, 2.f, 0.5f);
         }
     }
@@ -129,10 +129,10 @@ void LiveChordPanel::paint(juce::Graphics& g)
     float pw  = lb.getWidth() - 16.f;
 
     // Outer border with purple accent
-    g.setColour(juce::Colour(0xff0d0d20));
+    g.setColour(juce::Colour(0xff131328));
     g.fillRoundedRectangle(lb, 6.f);
-    g.setColour(juce::Colour(Pal::accent).withAlpha(0.45f));
-    g.drawRoundedRectangle(lb.reduced(0.5f), 6.f, 1.2f);
+    g.setColour(juce::Colour(Pal::accent));
+    g.drawRoundedRectangle(lb.reduced(0.5f), 6.f, 1.4f);
 
     auto held = proc.getHeldNotes();
     auto result = ChordDetector::detect(held, keyParam, si);
@@ -142,28 +142,28 @@ void LiveChordPanel::paint(juce::Graphics& g)
     // ── Chord name (large) + degree ──
     if (result.valid && !result.name.isEmpty())
     {
-        g.setFont(juce::FontOptions(30.f, juce::Font::bold));
+        g.setFont(juce::FontOptions(32.f, juce::Font::bold));
         g.setColour(juce::Colour(Pal::textHi));
-        g.drawText(result.name, px, y, pw * 0.70f, 38.f, juce::Justification::centredLeft);
+        g.drawText(result.name, px, y, pw * 0.68f, 40.f, juce::Justification::centredLeft);
 
         if (!result.degree.isEmpty() && result.degree != "?")
         {
-            g.setFont(juce::FontOptions(20.f, juce::Font::bold));
+            g.setFont(juce::FontOptions(22.f, juce::Font::bold));
             g.setColour(juce::Colour(Pal::accentHi));
-            g.drawText(result.degree, px + pw * 0.70f, y + 6.f, pw * 0.30f - 4.f, 28.f,
+            g.drawText(result.degree, px + pw * 0.68f, y + 6.f, pw * 0.32f - 4.f, 30.f,
                        juce::Justification::centredRight);
         }
     }
     else
     {
-        g.setFont(juce::FontOptions(16.f));
-        g.setColour(juce::Colour(Pal::textLow));
-        g.drawText("Speel noten...", px, y + 8.f, pw, 24.f, juce::Justification::centredLeft);
+        g.setFont(juce::FontOptions(17.f));
+        g.setColour(juce::Colour(Pal::textMid));
+        g.drawText("Speel noten...", px, y + 8.f, pw, 26.f, juce::Justification::centredLeft);
     }
-    y += 40.f;
+    y += 42.f;
 
     // ── Key + Scale label ──
-    g.setFont(juce::FontOptions(10.f, juce::Font::bold));
+    g.setFont(juce::FontOptions(11.f, juce::Font::bold));
     g.setColour(juce::Colour(Pal::textMid));
     g.drawText(juce::String(kn[keyParam % 12]) + "  " + juce::String(TheoryEngine::SCALE_NAMES[si]),
                px, y, pw, 14.f, juce::Justification::centredLeft);
@@ -244,20 +244,20 @@ void NextSuggestionsPanel::paint(juce::Graphics& g)
         float cx = 8.f + i * (cardW + 4.f);
         juce::Rectangle<float> card(cx, 18.f, cardW, cardH);
 
-        juce::ColourGradient cg(juce::Colour(0xff1c1c38), cx, 18.f,
-                                juce::Colour(0xff0e0e20), cx, 18.f + cardH, false);
+        juce::ColourGradient cg(juce::Colour(0xff242244), cx, 18.f,
+                                juce::Colour(0xff141430), cx, 18.f + cardH, false);
         g.setGradientFill(cg);
         g.fillRoundedRectangle(card, 5.f);
         g.setColour(juce::Colour(Pal::border));
-        g.drawRoundedRectangle(card.reduced(0.5f), 5.f, 0.7f);
+        g.drawRoundedRectangle(card.reduced(0.5f), 5.f, 1.0f);
 
         // Degree tag
-        g.setFont(juce::FontOptions(10.f, juce::Font::bold));
+        g.setFont(juce::FontOptions(11.f, juce::Font::bold));
         g.setColour(juce::Colour(Pal::accentHi));
         g.drawText(s.degree, card.reduced(5.f, 3.f), juce::Justification::topLeft);
 
         // Chord name
-        g.setFont(juce::FontOptions(13.f, juce::Font::bold));
+        g.setFont(juce::FontOptions(14.f, juce::Font::bold));
         g.setColour(juce::Colour(Pal::textHi));
         g.drawText(s.name, card.reduced(5.f, 2.f), juce::Justification::centred);
     }
@@ -357,8 +357,8 @@ void CoachDisplay::paint(juce::Graphics& g)
         g.setColour(juce::Colour(Pal::accentHi));
         g.drawText("♪  TIP", tipBox.reduced(5.f, 3.f), juce::Justification::topLeft);
 
-        g.setFont(juce::FontOptions(8.5f));
-        g.setColour(juce::Colour(Pal::textMid));
+        g.setFont(juce::FontOptions(9.5f));
+        g.setColour(juce::Colour(Pal::textHi));
         g.drawFittedText(getCoachTip(key, si, ct, lock, arp, prog, mode),
                          tipBox.reduced(6.f, 4.f).withTrimmedTop(14.f).toNearestInt(),
                          juce::Justification::topLeft, 6);
@@ -518,25 +518,29 @@ void MorphOneAudioProcessorEditor::paintSection(juce::Graphics& g,
                                                  const juce::String& title,
                                                  bool highlight)
 {
-    juce::ColourGradient bg(juce::Colour(highlight ? 0xff1a1a38 : 0xff161628),
+    // Body
+    juce::ColourGradient bg(juce::Colour(highlight ? 0xff211840 : 0xff1e1e38),
                             b.getX(), b.getY(),
-                            juce::Colour(0xff0f0f1e), b.getX(), b.getBottom(), false);
+                            juce::Colour(0xff111122), b.getX(), b.getBottom(), false);
     g.setGradientFill(bg);
     g.fillRoundedRectangle(b.toFloat(), 6.f);
-    g.setColour(juce::Colour(highlight ? Pal::accent : Pal::border).withAlpha(0.7f));
-    g.drawRoundedRectangle(b.toFloat().reduced(0.5f), 6.f, 0.8f);
 
+    // Border — solid and visible
+    g.setColour(juce::Colour(highlight ? Pal::accent : Pal::border));
+    g.drawRoundedRectangle(b.toFloat().reduced(0.5f), 6.f, 1.0f);
+
+    // Title bar
     juce::Rectangle<int> titleBar(b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 20);
-    juce::ColourGradient tbg(juce::Colour(highlight ? 0xff261842 : 0xff1c1c36),
+    juce::ColourGradient tbg(juce::Colour(highlight ? 0xff321a58 : 0xff28283e),
                              0, titleBar.getY(),
-                             juce::Colour(0xff141428), 0, titleBar.getBottom(), false);
+                             juce::Colour(0xff18182e), 0, titleBar.getBottom(), false);
     g.setGradientFill(tbg);
     g.fillRect(titleBar);
     g.setColour(juce::Colour(highlight ? Pal::accent : Pal::border));
     g.drawLine(b.getX() + 1.f, b.getY() + 21.f, b.getRight() - 1.f, b.getY() + 21.f, 1.f);
 
     g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
-    g.setColour(juce::Colour(highlight ? Pal::accentHi : Pal::textLow));
+    g.setColour(juce::Colour(highlight ? Pal::accentHi : Pal::textMid));
     g.drawText(title, titleBar, juce::Justification::centred);
 }
 
@@ -597,8 +601,8 @@ void MorphOneAudioProcessorEditor::paint(juce::Graphics& g)
     paintSection(g, {734, 584, 218, 108}, "PROGRESSION");
 
     // Theory strip inline labels
-    g.setFont(juce::FontOptions(8.f, juce::Font::bold));
-    g.setColour(juce::Colour(Pal::textLow));
+    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setColour(juce::Colour(Pal::textMid));
     const int sy = 584;
     g.drawText("KEY",    12, sy+25, 34, 14, juce::Justification::centredLeft);
     g.drawText("SCALE",  12, sy+49, 40, 14, juce::Justification::centredLeft);
