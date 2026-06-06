@@ -5,48 +5,169 @@
 #include "PresetManager.h"
 #include "TheoryEngine.h"
 
-// Animated waveform display
+// ── Colour palette ────────────────────────────────────────────────────────────
+namespace Pal
+{
+    constexpr juce::uint32
+        bg         = 0xff0b0b1a,
+        bgSection  = 0xff121224,
+        bgDark     = 0xff080814,
+        border     = 0xff2a2a4a,
+        borderHi   = 0xff3e3e70,
+        accent     = 0xff7b2fbe,
+        accentHi   = 0xff9b4fde,
+        accentLo   = 0xff4a1a80,
+        textHi     = 0xffddddff,
+        textMid    = 0xff9999bb,
+        textLow    = 0xff555577,
+        pillIn     = 0xff3a2a5a,
+        pillRoot   = 0xff7b2fbe,
+        pillOut    = 0xff181828;
+}
+
+// ── Custom LookAndFeel ────────────────────────────────────────────────────────
+class MorphOneLAF : public juce::LookAndFeel_V4
+{
+public:
+    MorphOneLAF()
+    {
+        setColour(juce::ResizableWindow::backgroundColourId, juce::Colour(Pal::bg));
+        setColour(juce::Label::textColourId,                 juce::Colour(Pal::textMid));
+        setColour(juce::Slider::textBoxTextColourId,         juce::Colour(Pal::textMid));
+        setColour(juce::Slider::textBoxOutlineColourId,      juce::Colours::transparentBlack);
+        setColour(juce::Slider::textBoxBackgroundColourId,   juce::Colours::transparentBlack);
+        setColour(juce::ComboBox::backgroundColourId,        juce::Colour(0xff141428));
+        setColour(juce::ComboBox::textColourId,              juce::Colour(Pal::textHi));
+        setColour(juce::ComboBox::outlineColourId,           juce::Colour(Pal::border));
+        setColour(juce::ComboBox::arrowColourId,             juce::Colour(Pal::accentHi));
+        setColour(juce::PopupMenu::backgroundColourId,       juce::Colour(0xff141428));
+        setColour(juce::PopupMenu::textColourId,             juce::Colour(Pal::textHi));
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, juce::Colour(Pal::accent));
+        setColour(juce::ToggleButton::textColourId,          juce::Colour(Pal::textMid));
+        setColour(juce::ToggleButton::tickColourId,          juce::Colour(Pal::accentHi));
+        setColour(juce::ToggleButton::tickDisabledColourId,  juce::Colour(Pal::border));
+    }
+
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h,
+                          float sliderPos, float startAngle, float endAngle,
+                          juce::Slider&) override
+    {
+        auto b  = juce::Rectangle<float>((float)x, (float)y, (float)w, (float)h).reduced(4.f);
+        float cx = b.getCentreX(), cy = b.getCentreY();
+        float r  = juce::jmin(b.getWidth(), b.getHeight()) * 0.5f;
+        float aw = r * 0.20f;
+
+        // Track arc
+        juce::Path track;
+        track.addCentredArc(cx, cy, r - aw * 0.5f, r - aw * 0.5f, 0.f, startAngle, endAngle, true);
+        g.setColour(juce::Colour(0xff1c1c38));
+        g.strokePath(track, juce::PathStrokeType(aw, juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded));
+
+        // Value arc glow + solid
+        float valAngle = startAngle + sliderPos * (endAngle - startAngle);
+        if (sliderPos > 0.001f)
+        {
+            juce::Path arc;
+            arc.addCentredArc(cx, cy, r - aw * 0.5f, r - aw * 0.5f, 0.f, startAngle, valAngle, true);
+            g.setColour(juce::Colour(Pal::accentLo).withAlpha(0.4f));
+            g.strokePath(arc, juce::PathStrokeType(aw * 2.6f, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+            juce::ColourGradient ag(juce::Colour(Pal::accentHi), cx - r, cy,
+                                    juce::Colour(0xff5060cc), cx + r, cy, false);
+            g.setGradientFill(ag);
+            g.strokePath(arc, juce::PathStrokeType(aw, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+        }
+
+        // Knob body
+        float kr = r - aw * 2.0f;
+        juce::ColourGradient body(juce::Colour(0xff3c3c62), cx - kr * 0.35f, cy - kr * 0.35f,
+                                  juce::Colour(0xff111122), cx + kr * 0.35f, cy + kr * 0.35f, false);
+        g.setGradientFill(body);
+        g.fillEllipse(cx - kr, cy - kr, kr * 2.f, kr * 2.f);
+
+        g.setColour(juce::Colour(Pal::borderHi));
+        g.drawEllipse(cx - kr + 0.5f, cy - kr + 0.5f, kr * 2.f - 1.f, kr * 2.f - 1.f, 0.8f);
+
+        // Indicator line
+        float li = kr * 0.32f, lo = kr * 0.82f;
+        g.setColour(juce::Colours::white.withAlpha(0.88f));
+        g.drawLine(cx + std::sin(valAngle) * li, cy - std::cos(valAngle) * li,
+                   cx + std::sin(valAngle) * lo, cy - std::cos(valAngle) * lo, 1.8f);
+    }
+
+    void drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int,
+                      juce::ComboBox& box) override
+    {
+        auto b = juce::Rectangle<float>(0.f, 0.f, (float)w, (float)h);
+        g.setColour(box.findColour(juce::ComboBox::backgroundColourId));
+        g.fillRoundedRectangle(b, 4.f);
+        g.setColour(box.findColour(juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle(b.reduced(0.5f), 4.f, 0.8f);
+
+        // Arrow
+        float ax = w - 14.f, ay = h * 0.5f - 2.f;
+        juce::Path arrow;
+        arrow.addTriangle(ax, ay, ax + 8.f, ay, ax + 4.f, ay + 5.f);
+        g.setColour(box.findColour(juce::ComboBox::arrowColourId));
+        g.fillPath(arrow);
+    }
+
+    juce::Font getComboBoxFont(juce::ComboBox&) override
+    {
+        return juce::Font(juce::FontOptions(10.5f));
+    }
+
+    juce::Font getLabelFont(juce::Label&) override
+    {
+        return juce::Font(juce::FontOptions(10.0f, juce::Font::bold));
+    }
+};
+
+// ── Animated waveform display ─────────────────────────────────────────────────
 class WavetableDisplay : public juce::Component, private juce::Timer
 {
 public:
     WavetableDisplay(juce::AudioProcessorValueTreeState& apvts) : apvts(apvts)
-    {
-        startTimerHz(30);
-    }
+    { startTimerHz(30); }
+
     void timerCallback() override { repaint(); }
 
     void paint(juce::Graphics& g) override
     {
         float morph = apvts.getRawParameterValue("MORPH")->load();
-        g.fillAll(juce::Colour(0xff0d0d22));
-        g.setColour(juce::Colour(0xff1e1e3a));
-        g.drawRect(getLocalBounds());
+        auto  lb    = getLocalBounds();
 
-        auto b = getLocalBounds().reduced(3).toFloat();
-        juce::Path path;
-        int w = getWidth();
-        for (int x = 0; x <= w; ++x)
+        g.setColour(juce::Colour(Pal::bgDark));
+        g.fillRoundedRectangle(lb.toFloat(), 4.f);
+        g.setColour(juce::Colour(Pal::border));
+        g.drawRoundedRectangle(lb.toFloat().reduced(0.5f), 4.f, 0.8f);
+
+        auto b = lb.reduced(4).toFloat();
+        juce::Path p;
+        for (int x = 0; x <= lb.getWidth(); ++x)
         {
-            float sample = WavetableOscillator::sampleAt((float)x / w, morph);
-            float y = b.getCentreY() - sample * b.getHeight() * 0.44f;
-            x == 0 ? path.startNewSubPath((float)x, y) : path.lineTo((float)x, y);
+            float s = WavetableOscillator::sampleAt((float)x / lb.getWidth(), morph);
+            float y = b.getCentreY() - s * b.getHeight() * 0.42f;
+            x == 0 ? p.startNewSubPath((float)x, y) : p.lineTo((float)x, y);
         }
-        juce::ColourGradient grad(juce::Colour(0xff9b4fde), 0, 0,
-                                  juce::Colour(0xff4f8fde), (float)w, 0, false);
-        g.setGradientFill(grad);
-        g.strokePath(path, juce::PathStrokeType(2.0f));
+        juce::ColourGradient lg(juce::Colour(Pal::accentHi), 0, 0,
+                                juce::Colour(0xff4f8fde), (float)lb.getWidth(), 0, false);
+        g.setGradientFill(lg);
+        g.strokePath(p, juce::PathStrokeType(1.8f));
 
-        const char* names[] = { "SINE", "TRIANGLE", "SAW", "SQUARE" };
-        int idx = juce::jlimit(0, 3, (int)std::round(morph * 3.0f));
-        g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        g.setColour(juce::Colour(0xff7b5fae));
-        g.drawText(names[idx], getLocalBounds().reduced(4), juce::Justification::bottomRight);
+        const char* wn[] = { "SINE", "TRI", "SAW", "SQ" };
+        int idx = juce::jlimit(0, 3, (int)std::round(morph * 3.f));
+        g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+        g.setColour(juce::Colour(Pal::textLow));
+        g.drawText(wn[idx], lb.reduced(4), juce::Justification::bottomRight);
     }
 private:
     juce::AudioProcessorValueTreeState& apvts;
 };
 
-// Knob + label
+// ── Knob + label ──────────────────────────────────────────────────────────────
 class KnobWithLabel : public juce::Component
 {
 public:
@@ -56,82 +177,145 @@ public:
     KnobWithLabel(const juce::String& name, bool isInt = false)
     {
         slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-        slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 15);
+        slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 58, 14);
         if (isInt) slider.setNumDecimalPlacesToDisplay(0);
-        slider.setColour(juce::Slider::rotarySliderFillColourId,    juce::Colour(0xff7b2fbe));
-        slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff2e2e50));
-        slider.setColour(juce::Slider::thumbColourId,               juce::Colours::white);
-        slider.setColour(juce::Slider::textBoxTextColourId,         juce::Colour(0xff9999bb));
-        slider.setColour(juce::Slider::textBoxOutlineColourId,      juce::Colours::transparentBlack);
-        slider.setColour(juce::Slider::textBoxBackgroundColourId,   juce::Colours::transparentBlack);
         addAndMakeVisible(slider);
         label.setText(name, juce::dontSendNotification);
         label.setJustificationType(juce::Justification::centred);
-        label.setFont(juce::FontOptions(10.0f));
-        label.setColour(juce::Label::textColourId, juce::Colour(0xff8888aa));
+        label.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+        label.setColour(juce::Label::textColourId, juce::Colour(Pal::textLow));
         addAndMakeVisible(label);
     }
     void resized() override
     {
-        auto area = getLocalBounds();
-        label.setBounds(area.removeFromBottom(16));
-        slider.setBounds(area);
+        auto a = getLocalBounds();
+        label.setBounds(a.removeFromBottom(15));
+        slider.setBounds(a);
     }
 };
 
-// Mode selector — 5 pill buttons (Lead | Bass | Melody | Arp | Pad)
+// ── Mode selector ─────────────────────────────────────────────────────────────
 class ModeSelector : public juce::Component
 {
 public:
-    static constexpr int NUM_MODES = 5;
-    static constexpr const char* MODE_NAMES[NUM_MODES] = { "LEAD", "BASS", "MELODY", "ARP", "PAD" };
-
     int selectedMode = 2;
     std::function<void(int)> onChange;
 
     void paint(juce::Graphics& g) override
     {
-        static const juce::Colour accent { 0xff7b2fbe };
-        float btnW = getWidth() / (float)NUM_MODES;
-        float h    = (float)getHeight();
-
-        for (int i = 0; i < NUM_MODES; ++i)
+        const char* names[] = { "LEAD", "BASS", "MELODY", "ARP", "PAD" };
+        float bw = getWidth() / 5.f;
+        for (int i = 0; i < 5; ++i)
         {
-            juce::Rectangle<float> btn(i * btnW + 1.f, 1.f, btnW - 2.f, h - 2.f);
+            juce::Rectangle<float> b(i * bw + 1.f, 1.f, bw - 2.f, getHeight() - 2.f);
             bool sel = (i == selectedMode);
-
             if (sel)
             {
-                g.setColour(accent);
-                g.fillRoundedRectangle(btn, 4.0f);
+                juce::ColourGradient cg(juce::Colour(Pal::accent), b.getCentreX(), b.getY(),
+                                        juce::Colour(Pal::accentLo), b.getCentreX(), b.getBottom(), false);
+                g.setGradientFill(cg);
+                g.fillRoundedRectangle(b, 5.f);
+                g.setColour(juce::Colour(Pal::accentHi));
+                g.drawRoundedRectangle(b.reduced(0.5f), 5.f, 0.8f);
             }
             else
             {
-                g.setColour(juce::Colour(0xff1e1e3a));
-                g.fillRoundedRectangle(btn, 4.0f);
-                g.setColour(juce::Colour(0xff3a3a60));
-                g.drawRoundedRectangle(btn.reduced(0.5f), 4.0f, 0.8f);
+                g.setColour(juce::Colour(0xff161630));
+                g.fillRoundedRectangle(b, 5.f);
+                g.setColour(juce::Colour(Pal::border));
+                g.drawRoundedRectangle(b.reduced(0.5f), 5.f, 0.6f);
             }
-
             g.setFont(juce::FontOptions(9.5f, sel ? juce::Font::bold : 0));
-            g.setColour(sel ? juce::Colours::white : juce::Colour(0xff7777aa));
-            g.drawText(MODE_NAMES[i], btn, juce::Justification::centred);
+            g.setColour(sel ? juce::Colours::white : juce::Colour(Pal::textLow));
+            g.drawText(names[i], b, juce::Justification::centred);
         }
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
-        int mode = (int)(e.x / (getWidth() / (float)NUM_MODES));
-        mode = juce::jlimit(0, NUM_MODES - 1, mode);
-        if (mode != selectedMode)
-        {
-            selectedMode = mode;
-            repaint();
-            if (onChange) onChange(selectedMode);
-        }
+        int m = juce::jlimit(0, 4, (int)(e.x / (getWidth() / 5.f)));
+        if (m != selectedMode) { selectedMode = m; repaint(); if (onChange) onChange(m); }
     }
 };
 
+// ── Theory Coach display ──────────────────────────────────────────────────────
+class CoachDisplay : public juce::Component, private juce::Timer
+{
+public:
+    CoachDisplay(juce::AudioProcessorValueTreeState& apvts) : apvts(apvts)
+    { startTimerHz(4); }
+
+    void timerCallback() override { repaint(); }
+
+    void paint(juce::Graphics& g) override;
+
+private:
+    juce::AudioProcessorValueTreeState& apvts;
+
+    enum class Mood { Uplifting, Melancholic, Tensive, Nostalgic };
+
+    Mood getMood(int scaleIdx, int chordType) const
+    {
+        static const Mood sm[] = {
+            Mood::Melancholic, Mood::Nostalgic,  Mood::Tensive,    Mood::Uplifting,
+            Mood::Uplifting,   Mood::Uplifting,  Mood::Melancholic,Mood::Nostalgic,
+            Mood::Melancholic, Mood::Uplifting,  Mood::Tensive,    Mood::Tensive,
+            Mood::Tensive,     Mood::Tensive,    Mood::Nostalgic
+        };
+        Mood base = sm[juce::jlimit(0, 14, scaleIdx)];
+        if (chordType == 3 || chordType == 4) return Mood::Tensive;   // Sus
+        if (chordType == 7 && base == Mood::Uplifting) return Mood::Nostalgic;
+        return base;
+    }
+
+    struct MoodInfo { const char* name; juce::Colour colour; };
+    MoodInfo getMoodInfo(Mood m) const
+    {
+        switch (m) {
+            case Mood::Uplifting:   return { "UPLIFTING",   juce::Colour(0xff4a9eff) };
+            case Mood::Melancholic: return { "MELANCHOLIC", juce::Colour(0xff9b4fde) };
+            case Mood::Tensive:     return { "TENSIVE",     juce::Colour(0xffee6633) };
+            case Mood::Nostalgic:   return { "NOSTALGIC",   juce::Colour(0xff44cc88) };
+        }
+        return { "", juce::Colour() };
+    }
+
+    float getTension(int si, int ct) const
+    {
+        static const float ct_t[] = { 0.1f,0.1f,0.2f,0.5f,0.6f,0.3f,0.4f,0.3f,0.7f,0.0f,0.1f };
+        float t = ct_t[juce::jlimit(0, 10, ct)];
+        if (si == 10) t = juce::jmax(t, 0.6f);   // Blues
+        if (si == 11) t = juce::jmax(t, 0.7f);   // Phrygian Dom
+        if (si == 14) t = 0.9f;                   // Chromatic
+        return t;
+    }
+
+    juce::String getCoachTip(int key, int si, int ct, bool lock, bool arpOn, int prog, int mode) const
+    {
+        juce::ignoreUnused(key, mode);
+        if (prog > 0)
+            return juce::String("Progressie: ") + TheoryEngine::ARTIST_PROGS[prog].name
+                   + " speelt 4 akkoorden gesynchroniseerd met de DAW";
+        if (arpOn && lock)
+            return "Scale Lock + Arp: elke gegenereerde noot is gegarandeerd in toonsoort";
+        if (ct == 4) return "Sus4 creëert spanning — lost mooi op naar major of minor";
+        if (ct == 8) return "Dominant 7 wil sterk oplossen naar de tonica — gebruik voor drops";
+        if (ct == 6) return "Minor 7 voegt diepe melancholie toe — typisch voor deep house pads";
+        if (ct == 7) return "Major 7 klinkt dromerig en nostalgisch — perfect voor atmosferische pads";
+        if (ct == 5) return "Add9 voegt openheid en kleur toe zonder de 7de in te brengen";
+        if (si == 1) return "Dorisch: zelfde grondtoon als mineur maar met een bright ♭7 — jazz & soul";
+        if (si == 6) return "Harmonisch mineur: de ♯7 geeft een klassiek drama-effect";
+        if (si == 10)return "Blues: gebruik de ♭5 (blue note) spaarzaam voor maximaal effect";
+        if (si == 11)return "Frygisch dominant: Spaans / Arabisch klankkleur — intense spanning";
+        if (si == 3) return "Lydisch: de ♯4 geeft een drijvend, filmisch gevoel — Hans Zimmer";
+        if (!lock)   return "Tip: activeer Scale Lock om altijd in toonsoort te spelen";
+        if (arpOn)   return "Arp actief — kies een richting en pas de Gate aan voor karakter";
+        return juce::String("Alle noten klinken goed in ") + TheoryEngine::SCALE_NAMES[si]
+               + " — verken de akkoordmodi voor meer kleur";
+    }
+};
+
+// ── Editor ────────────────────────────────────────────────────────────────────
 class MorphOneAudioProcessorEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
 {
@@ -144,25 +328,22 @@ public:
 
 private:
     MorphOneAudioProcessor& audioProcessor;
+    MorphOneLAF             morphLAF;
 
     void timerCallback() override;
-    void paintSection(juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& label);
-    void styleCombo(juce::ComboBox& box);
-    int  getIntParam(const juce::String& id);
-    void setIntParam(const juce::String& id, int val);
+    void paintSection(juce::Graphics&, juce::Rectangle<int>, const juce::String&, bool highlight = false);
+    void styleCombo(juce::ComboBox&);
+    int  getIntParam(const juce::String&);
+    void setIntParam(const juce::String&, int);
     void populateTheoryCombos();
     void syncCombosFromApvts();
 
-    // ── Preset bar ──
-    juce::ComboBox presetBox;
-
-    // ── Mode selector ──
-    ModeSelector modeSelector;
-
-    // ── Waveform display ──
+    // Components
+    juce::ComboBox   presetBox;
+    ModeSelector     modeSelector;
     WavetableDisplay waveDisplay;
+    CoachDisplay     coachDisplay;
 
-    // ── Synth knobs ──
     KnobWithLabel morphKnob    { "Morph"   };
     KnobWithLabel cutoffKnob   { "Cutoff"  };
     KnobWithLabel resKnob      { "Res"     };
@@ -188,9 +369,8 @@ private:
                             octaveAtt, lfoRateAtt, lfoDepthAtt, reverbAtt,
                             portaAtt, gainAtt, arpGateAtt;
 
-    // ── Theory combos ──
-    juce::ComboBox keyBox, scaleBox;
-    juce::ComboBox chordTypeBox, chordInvBox;
+    // Theory combos
+    juce::ComboBox keyBox, scaleBox, chordTypeBox, chordInvBox;
     juce::ComboBox arpDirBox, arpSpeedBox;
     juce::ComboBox progBox, progChordBox;
 
