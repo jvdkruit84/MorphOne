@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "WavetableOscillator.h"
 #include "PresetManager.h"
+#include "TheoryEngine.h"
 
 // Animated waveform display
 class WavetableDisplay : public juce::Component, private juce::Timer
@@ -85,7 +86,8 @@ public:
     }
 };
 
-class MorphOneAudioProcessorEditor : public juce::AudioProcessorEditor
+class MorphOneAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                     private juce::Timer
 {
 public:
     MorphOneAudioProcessorEditor(MorphOneAudioProcessor&);
@@ -97,12 +99,21 @@ public:
 private:
     MorphOneAudioProcessor& audioProcessor;
 
-    // Preset bar
+    void timerCallback() override;
+    void paintSection(juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& label);
+    void styleCombo(juce::ComboBox& box);
+    int  getIntParam(const juce::String& id);
+    void setIntParam(const juce::String& id, int val);
+    void populateTheoryCombos();
+    void syncCombosFromApvts();
+
+    // ── Preset bar ──
     juce::ComboBox presetBox;
 
-    // Sections
+    // ── Waveform display ──
     WavetableDisplay waveDisplay;
 
+    // ── Synth knobs ──
     KnobWithLabel morphKnob    { "Morph"   };
     KnobWithLabel cutoffKnob   { "Cutoff"  };
     KnobWithLabel resKnob      { "Res"     };
@@ -116,13 +127,26 @@ private:
     KnobWithLabel lfoDepthKnob { "Depth"   };
     KnobWithLabel reverbKnob   { "Reverb"  };
     KnobWithLabel gainKnob     { "Gain"    };
+    KnobWithLabel arpGateKnob  { "Gate"    };
 
-    using Attach = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using Attach    = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using BtnAttach = juce::AudioProcessorValueTreeState::ButtonAttachment;
+
     std::unique_ptr<Attach> morphAtt, cutoffAtt, resAtt, attackAtt, decayAtt,
                             sustainAtt, releaseAtt, unisonAtt, detuneAtt,
-                            lfoRateAtt, lfoDepthAtt, reverbAtt, gainAtt;
+                            lfoRateAtt, lfoDepthAtt, reverbAtt, gainAtt,
+                            arpGateAtt;
 
-    void paintSection(juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& label);
+    // ── Theory section ──
+    juce::ComboBox keyBox, scaleBox;          // Scale Lock
+    juce::ComboBox chordTypeBox, chordInvBox; // Chord Mode
+    juce::ComboBox arpDirBox, arpSpeedBox;    // Arp
+    juce::ComboBox progBox, progChordBox;     // Progression
+
+    juce::ToggleButton scaleLockBtn { "Lock" };
+    juce::ToggleButton arpOnBtn     { "On"   };
+
+    std::unique_ptr<BtnAttach> scaleLockAtt, arpOnAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MorphOneAudioProcessorEditor)
 };

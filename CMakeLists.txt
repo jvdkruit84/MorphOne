@@ -28,6 +28,9 @@ target_sources(MorphOne PRIVATE
     Source/PluginProcessor.h
     Source/PluginEditor.h
     Source/PresetManager.h
+    Source/TheoryEngine.h
+    Source/SmartArp.h
+    Source/ProgressionEngine.h
 )
 
 target_compile_definitions(MorphOne PUBLIC

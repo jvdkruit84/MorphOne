@@ -1,5 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
+#include <map>
+#include "TheoryEngine.h"
+#include "SmartArp.h"
+#include "ProgressionEngine.h"
 
 class MorphOneAudioProcessor : public juce::AudioProcessor
 {
@@ -39,7 +43,13 @@ private:
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::dsp::Reverb reverb;
 
-    float  lfoPhase         = 0.0f;
+    SmartArp          arp;
+    ProgressionEngine progression;
+
+    std::map<int, int>               scaleLockNoteMap;
+    std::map<int, std::vector<int>>  chordModeNoteMap;
+
+    float  lfoPhase          = 0.0f;
     double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MorphOneAudioProcessor)

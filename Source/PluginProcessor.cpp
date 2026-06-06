@@ -16,7 +16,7 @@ struct WavetableVoice : public juce::SynthesiserVoice
     juce::ADSR adsr;
     float level        = 0.0f;
     int   numUnison    = 1;
-    float unisonDetune = 0.0f; // semitones, total spread
+    float unisonDetune = 0.0f;
     int   midiNote     = -1;
 
     bool canPlaySound(juce::SynthesiserSound* s) override
@@ -89,7 +89,7 @@ struct WavetableVoice : public juce::SynthesiserVoice
     }
 };
 
-// Processor
+// ── Processor ──────────────────────────────────────────────────────────────
 
 MorphOneAudioProcessor::MorphOneAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -112,15 +112,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout MorphOneAudioProcessor::crea
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
 
-    auto skew = [](float min, float max, float def, float s) {
-        return std::make_unique<juce::AudioParameterFloat>(
-            juce::ParameterID{}, "", juce::NormalisableRange<float>(min, max, 0.001f, s), def);
-    };
-    ignoreUnused(skew);
-
+    // ── Synth ──
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "MORPH", "Morph", 0.0f, 1.0f, 0.0f));
-
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "ATTACK",  "Attack",
         juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.4f), 0.05f));
@@ -133,6 +127,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout MorphOneAudioProcessor::crea
         "RELEASE", "Release",
         juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.4f), 0.3f));
 
+    // ── Filter ──
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "FILTER_CUTOFF", "Cutoff",
         juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.25f), 8000.0f));
@@ -140,22 +135,48 @@ juce::AudioProcessorValueTreeState::ParameterLayout MorphOneAudioProcessor::crea
         "FILTER_RES", "Resonance",
         juce::NormalisableRange<float>(0.5f, 8.0f, 0.01f, 0.5f), 0.7f));
 
+    // ── Unison ──
     p.push_back(std::make_unique<juce::AudioParameterInt>(
         "UNISON", "Unison", 1, 8, 1));
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "DETUNE", "Detune", 0.0f, 1.0f, 0.3f));
 
+    // ── LFO ──
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "LFO_RATE",  "LFO Rate",
         juce::NormalisableRange<float>(0.01f, 20.0f, 0.01f, 0.4f), 0.5f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "LFO_DEPTH", "LFO Depth", 0.0f, 1.0f, 0.0f));
 
+    // ── FX ──
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "REVERB_MIX", "Reverb", 0.0f, 1.0f, 0.0f));
-
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "GAIN", "Gain", 0.0f, 1.0f, 0.8f));
+
+    // ── Theory Engine ──
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "THEORY_KEY",  "Key",          0, 11, 0));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "SCALE_IDX",   "Scale",        0, 14, 5));
+    p.push_back(std::make_unique<juce::AudioParameterBool>(
+        "SCALE_LOCK",  "Scale Lock",   false));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "CHORD_TYPE",  "Chord Type",   0, 10, 0));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "CHORD_INV",   "Chord Inv",    0, 3,  0));
+    p.push_back(std::make_unique<juce::AudioParameterBool>(
+        "ARP_ON",      "Arp On",       false));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "ARP_DIR",     "Arp Dir",      0, 3,  0));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "ARP_SPEED",   "Arp Speed",    0, 2,  1));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "ARP_GATE",    "Arp Gate",     0.1f, 1.0f, 0.8f));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "PROG_IDX",    "Progression",  0, 9,  0));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "PROG_CHORD",  "Prog Chord",   1, 10, 1));
 
     return { p.begin(), p.end() };
 }
@@ -177,6 +198,11 @@ void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     reverb.prepare(spec);
     reverb.reset();
 
+    arp.prepare(sampleRate);
+    progression.reset();
+
+    scaleLockNoteMap.clear();
+    chordModeNoteMap.clear();
     lfoPhase = 0.0f;
 }
 
@@ -187,21 +213,85 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    float morph    = apvts.getRawParameterValue("MORPH")->load();
-    float attack   = apvts.getRawParameterValue("ATTACK")->load();
-    float decay    = apvts.getRawParameterValue("DECAY")->load();
-    float sustain  = apvts.getRawParameterValue("SUSTAIN")->load();
-    float release  = apvts.getRawParameterValue("RELEASE")->load();
-    int   unison   = (int)apvts.getRawParameterValue("UNISON")->load();
-    float detune   = apvts.getRawParameterValue("DETUNE")->load();
-    float lfoRate  = apvts.getRawParameterValue("LFO_RATE")->load();
-    float lfoDepth = apvts.getRawParameterValue("LFO_DEPTH")->load();
-    float cutoff   = apvts.getRawParameterValue("FILTER_CUTOFF")->load();
-    float res      = apvts.getRawParameterValue("FILTER_RES")->load();
+    // ── Read synth params ──
+    float morph     = apvts.getRawParameterValue("MORPH")->load();
+    float attack    = apvts.getRawParameterValue("ATTACK")->load();
+    float decay     = apvts.getRawParameterValue("DECAY")->load();
+    float sustain   = apvts.getRawParameterValue("SUSTAIN")->load();
+    float release   = apvts.getRawParameterValue("RELEASE")->load();
+    int   unison    = (int)apvts.getRawParameterValue("UNISON")->load();
+    float detune    = apvts.getRawParameterValue("DETUNE")->load();
+    float lfoRate   = apvts.getRawParameterValue("LFO_RATE")->load();
+    float lfoDepth  = apvts.getRawParameterValue("LFO_DEPTH")->load();
+    float cutoff    = apvts.getRawParameterValue("FILTER_CUTOFF")->load();
+    float res       = apvts.getRawParameterValue("FILTER_RES")->load();
     float reverbMix = apvts.getRawParameterValue("REVERB_MIX")->load();
-    float gain     = apvts.getRawParameterValue("GAIN")->load();
+    float gain      = apvts.getRawParameterValue("GAIN")->load();
 
-    // LFO modulates morph
+    // ── Read theory params ──
+    int   theoryKey  = (int)apvts.getRawParameterValue("THEORY_KEY")->load();
+    int   scaleIdx   = (int)apvts.getRawParameterValue("SCALE_IDX")->load();
+    bool  scaleLock  = apvts.getRawParameterValue("SCALE_LOCK")->load() > 0.5f;
+    int   chordType  = (int)apvts.getRawParameterValue("CHORD_TYPE")->load();
+    int   chordInv   = (int)apvts.getRawParameterValue("CHORD_INV")->load();
+    bool  arpOn      = apvts.getRawParameterValue("ARP_ON")->load() > 0.5f;
+    int   arpDir     = (int)apvts.getRawParameterValue("ARP_DIR")->load();
+    int   arpSpeed   = (int)apvts.getRawParameterValue("ARP_SPEED")->load();
+    float arpGate    = apvts.getRawParameterValue("ARP_GATE")->load();
+    int   progIdx    = (int)apvts.getRawParameterValue("PROG_IDX")->load();
+    int   progChord  = (int)apvts.getRawParameterValue("PROG_CHORD")->load();
+
+    int rootMidi = 60 + theoryKey; // root note, middle octave
+
+    // ── Playhead info ──
+    double ppq = 0.0, bpm = 120.0;
+    bool playing = false;
+    if (auto* ph = getPlayHead())
+    {
+        juce::AudioPlayHead::CurrentPositionInfo info;
+        if (ph->getCurrentPosition(info))
+        {
+            ppq     = info.ppqPosition;
+            bpm     = info.bpm > 0.0 ? info.bpm : 120.0;
+            playing = info.isPlaying;
+        }
+    }
+
+    // ── Theory MIDI pipeline ──
+    if (scaleLock)
+        TheoryEngine::applyScaleLock(midi, rootMidi, scaleIdx, scaleLockNoteMap);
+
+    if (arpOn)
+    {
+        arp.updateHeld(midi);
+        static const int speeds[] = { 4, 8, 16 };
+        SmartArp::Config arpCfg;
+        arpCfg.active    = true;
+        arpCfg.direction = (SmartArp::Direction)juce::jlimit(0, 3, arpDir);
+        arpCfg.speedDiv  = speeds[juce::jlimit(0, 2, arpSpeed)];
+        arpCfg.gate      = arpGate;
+        arpCfg.rootMidi  = rootMidi;
+        arpCfg.scaleIdx  = scaleIdx;
+        arp.processBlock(midi, buffer.getNumSamples(), bpm, arpCfg);
+    }
+    else if (chordType > 0)
+    {
+        TheoryEngine::applyChordMode(midi, chordType, chordInv, chordModeNoteMap);
+    }
+
+    if (progIdx > 0)
+    {
+        ProgressionEngine::Config progCfg;
+        progCfg.active    = true;
+        progCfg.progIdx   = progIdx;
+        progCfg.rootMidi  = rootMidi;
+        progCfg.chordType = progChord;
+        progCfg.velocity  = 0.7f;
+        progression.processBlock(midi, ppq, playing, bpm,
+                                 buffer.getNumSamples(), progCfg);
+    }
+
+    // ── LFO modulates morph ──
     float lfo = std::sin(lfoPhase) * 0.5f + 0.5f;
     float morphMod = juce::jlimit(0.0f, 1.0f, morph + lfo * lfoDepth * (1.0f - morph));
     lfoPhase += juce::MathConstants<float>::twoPi * lfoRate
@@ -209,8 +299,8 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     if (lfoPhase >= juce::MathConstants<float>::twoPi)
         lfoPhase -= juce::MathConstants<float>::twoPi;
 
+    // ── Update voice parameters ──
     juce::ADSR::Parameters adsrParams { attack, decay, sustain, release };
-
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* v = dynamic_cast<WavetableVoice*>(synth.getVoice(i)))
         {
@@ -221,7 +311,7 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     synth.renderNextBlock(buffer, midi, 0, buffer.getNumSamples());
 
-    // Filter
+    // ── Filter ──
     float safeCutoff = juce::jlimit(20.0f, (float)(currentSampleRate * 0.49), cutoff);
     filter.setCutoffFrequency(safeCutoff);
     filter.setResonance(res);
@@ -230,7 +320,7 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     juce::dsp::ProcessContextReplacing<float> ctx(block);
     filter.process(ctx);
 
-    // Reverb
+    // ── Reverb ──
     juce::dsp::Reverb::Parameters rvParams;
     rvParams.roomSize   = 0.6f;
     rvParams.damping    = 0.5f;
