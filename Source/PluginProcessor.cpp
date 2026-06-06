@@ -243,6 +243,9 @@ void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     progression.reset();
     monoNoteStack.clear();
 
+    heldNotesBits[0].store(0, std::memory_order_relaxed);
+    heldNotesBits[1].store(0, std::memory_order_relaxed);
+
     scaleLockNoteMap.clear();
     chordModeNoteMap.clear();
     lfoPhase = 0.0f;
@@ -287,6 +290,21 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     int   progChord = (int)apvts.getRawParameterValue("PROG_CHORD")->load();
 
     int rootMidi = 60 + theoryKey;
+
+    // ── Capture raw note state for UI (before octave shift) ──
+    for (const auto& m : midi)
+    {
+        auto msg = m.getMessage();
+        if (msg.isNoteOn())
+            setNoteHeld(msg.getNoteNumber(), true);
+        else if (msg.isNoteOff())
+            setNoteHeld(msg.getNoteNumber(), false);
+        else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
+            heldNotesBits[0].store(0, std::memory_order_relaxed);
+            heldNotesBits[1].store(0, std::memory_order_relaxed);
+        }
+    }
 
     // ── Polyphony per mode ──
     // 0=Lead 1=Bass → mono, 2=Melody → 4, 3=Arp → 4, 4=Pad → 8

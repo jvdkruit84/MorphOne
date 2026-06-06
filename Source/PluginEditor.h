@@ -4,6 +4,7 @@
 #include "WavetableOscillator.h"
 #include "PresetManager.h"
 #include "TheoryEngine.h"
+#include "ChordDetector.h"
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 namespace Pal
@@ -57,14 +58,12 @@ public:
         float r  = juce::jmin(b.getWidth(), b.getHeight()) * 0.5f;
         float aw = r * 0.20f;
 
-        // Track arc
         juce::Path track;
         track.addCentredArc(cx, cy, r - aw * 0.5f, r - aw * 0.5f, 0.f, startAngle, endAngle, true);
         g.setColour(juce::Colour(0xff1c1c38));
         g.strokePath(track, juce::PathStrokeType(aw, juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
 
-        // Value arc glow + solid
         float valAngle = startAngle + sliderPos * (endAngle - startAngle);
         if (sliderPos > 0.001f)
         {
@@ -80,17 +79,14 @@ public:
                                                     juce::PathStrokeType::rounded));
         }
 
-        // Knob body
         float kr = r - aw * 2.0f;
         juce::ColourGradient body(juce::Colour(0xff3c3c62), cx - kr * 0.35f, cy - kr * 0.35f,
                                   juce::Colour(0xff111122), cx + kr * 0.35f, cy + kr * 0.35f, false);
         g.setGradientFill(body);
         g.fillEllipse(cx - kr, cy - kr, kr * 2.f, kr * 2.f);
-
         g.setColour(juce::Colour(Pal::borderHi));
         g.drawEllipse(cx - kr + 0.5f, cy - kr + 0.5f, kr * 2.f - 1.f, kr * 2.f - 1.f, 0.8f);
 
-        // Indicator line
         float li = kr * 0.32f, lo = kr * 0.82f;
         g.setColour(juce::Colours::white.withAlpha(0.88f));
         g.drawLine(cx + std::sin(valAngle) * li, cy - std::cos(valAngle) * li,
@@ -105,8 +101,6 @@ public:
         g.fillRoundedRectangle(b, 4.f);
         g.setColour(box.findColour(juce::ComboBox::outlineColourId));
         g.drawRoundedRectangle(b.reduced(0.5f), 4.f, 0.8f);
-
-        // Arrow
         float ax = w - 14.f, ay = h * 0.5f - 2.f;
         juce::Path arrow;
         arrow.addTriangle(ax, ay, ax + 8.f, ay, ax + 4.f, ay + 5.f);
@@ -115,30 +109,23 @@ public:
     }
 
     juce::Font getComboBoxFont(juce::ComboBox&) override
-    {
-        return juce::Font(juce::FontOptions(10.5f));
-    }
+    { return juce::Font(juce::FontOptions(10.5f)); }
 
     juce::Font getLabelFont(juce::Label&) override
-    {
-        return juce::Font(juce::FontOptions(10.0f, juce::Font::bold));
-    }
+    { return juce::Font(juce::FontOptions(10.0f, juce::Font::bold)); }
 };
 
 // ── Animated waveform display ─────────────────────────────────────────────────
 class WavetableDisplay : public juce::Component, private juce::Timer
 {
 public:
-    WavetableDisplay(juce::AudioProcessorValueTreeState& apvts) : apvts(apvts)
-    { startTimerHz(30); }
-
+    WavetableDisplay(juce::AudioProcessorValueTreeState& a) : apvts(a) { startTimerHz(30); }
     void timerCallback() override { repaint(); }
 
     void paint(juce::Graphics& g) override
     {
         float morph = apvts.getRawParameterValue("MORPH")->load();
         auto  lb    = getLocalBounds();
-
         g.setColour(juce::Colour(Pal::bgDark));
         g.fillRoundedRectangle(lb.toFloat(), 4.f);
         g.setColour(juce::Colour(Pal::border));
@@ -177,19 +164,19 @@ public:
     KnobWithLabel(const juce::String& name, bool isInt = false)
     {
         slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-        slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 58, 14);
+        slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 58, 12);
         if (isInt) slider.setNumDecimalPlacesToDisplay(0);
         addAndMakeVisible(slider);
         label.setText(name, juce::dontSendNotification);
         label.setJustificationType(juce::Justification::centred);
-        label.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+        label.setFont(juce::FontOptions(9.0f, juce::Font::bold));
         label.setColour(juce::Label::textColourId, juce::Colour(Pal::textLow));
         addAndMakeVisible(label);
     }
     void resized() override
     {
         auto a = getLocalBounds();
-        label.setBounds(a.removeFromBottom(15));
+        label.setBounds(a.removeFromBottom(13));
         slider.setBounds(a);
     }
 };
@@ -238,15 +225,54 @@ public:
     }
 };
 
-// ── Theory Coach display ──────────────────────────────────────────────────────
+// ── Visual piano keyboard (2 octaves, C3–B4) ─────────────────────────────────
+class VisualKeyboard : public juce::Component, private juce::Timer
+{
+public:
+    VisualKeyboard(MorphOneAudioProcessor& proc, juce::AudioProcessorValueTreeState& a)
+        : proc(proc), apvts(a) { startTimerHz(20); }
+    void timerCallback() override { repaint(); }
+    void paint(juce::Graphics& g) override;
+
+private:
+    MorphOneAudioProcessor& proc;
+    juce::AudioProcessorValueTreeState& apvts;
+};
+
+// ── Live chord name panel ─────────────────────────────────────────────────────
+class LiveChordPanel : public juce::Component, private juce::Timer
+{
+public:
+    LiveChordPanel(MorphOneAudioProcessor& proc, juce::AudioProcessorValueTreeState& a)
+        : proc(proc), apvts(a) { startTimerHz(10); }
+    void timerCallback() override { repaint(); }
+    void paint(juce::Graphics& g) override;
+
+private:
+    MorphOneAudioProcessor& proc;
+    juce::AudioProcessorValueTreeState& apvts;
+};
+
+// ── Next chord suggestions ────────────────────────────────────────────────────
+class NextSuggestionsPanel : public juce::Component, private juce::Timer
+{
+public:
+    NextSuggestionsPanel(MorphOneAudioProcessor& proc, juce::AudioProcessorValueTreeState& a)
+        : proc(proc), apvts(a) { startTimerHz(4); }
+    void timerCallback() override { repaint(); }
+    void paint(juce::Graphics& g) override;
+
+private:
+    MorphOneAudioProcessor& proc;
+    juce::AudioProcessorValueTreeState& apvts;
+};
+
+// ── Theory Coach display (mood / tension / tips) ──────────────────────────────
 class CoachDisplay : public juce::Component, private juce::Timer
 {
 public:
-    CoachDisplay(juce::AudioProcessorValueTreeState& apvts) : apvts(apvts)
-    { startTimerHz(4); }
-
+    CoachDisplay(juce::AudioProcessorValueTreeState& a) : apvts(a) { startTimerHz(4); }
     void timerCallback() override { repaint(); }
-
     void paint(juce::Graphics& g) override;
 
 private:
@@ -263,7 +289,7 @@ private:
             Mood::Tensive,     Mood::Tensive,    Mood::Nostalgic
         };
         Mood base = sm[juce::jlimit(0, 14, scaleIdx)];
-        if (chordType == 3 || chordType == 4) return Mood::Tensive;   // Sus
+        if (chordType == 3 || chordType == 4) return Mood::Tensive;
         if (chordType == 7 && base == Mood::Uplifting) return Mood::Nostalgic;
         return base;
     }
@@ -284,9 +310,9 @@ private:
     {
         static const float ct_t[] = { 0.1f,0.1f,0.2f,0.5f,0.6f,0.3f,0.4f,0.3f,0.7f,0.0f,0.1f };
         float t = ct_t[juce::jlimit(0, 10, ct)];
-        if (si == 10) t = juce::jmax(t, 0.6f);   // Blues
-        if (si == 11) t = juce::jmax(t, 0.7f);   // Phrygian Dom
-        if (si == 14) t = 0.9f;                   // Chromatic
+        if (si == 10) t = juce::jmax(t, 0.6f);
+        if (si == 11) t = juce::jmax(t, 0.7f);
+        if (si == 14) t = 0.9f;
         return t;
     }
 
@@ -339,10 +365,13 @@ private:
     void syncCombosFromApvts();
 
     // Components
-    juce::ComboBox   presetBox;
-    ModeSelector     modeSelector;
-    WavetableDisplay waveDisplay;
-    CoachDisplay     coachDisplay;
+    juce::ComboBox       presetBox;
+    ModeSelector         modeSelector;
+    WavetableDisplay     waveDisplay;
+    LiveChordPanel       liveChordPanel;
+    VisualKeyboard       visualKeyboard;
+    NextSuggestionsPanel nextSuggestions;
+    CoachDisplay         coachDisplay;
 
     KnobWithLabel morphKnob    { "Morph"   };
     KnobWithLabel cutoffKnob   { "Cutoff"  };
@@ -369,7 +398,6 @@ private:
                             octaveAtt, lfoRateAtt, lfoDepthAtt, reverbAtt,
                             portaAtt, gainAtt, arpGateAtt;
 
-    // Theory combos
     juce::ComboBox keyBox, scaleBox, chordTypeBox, chordInvBox;
     juce::ComboBox arpDirBox, arpSpeedBox;
     juce::ComboBox progBox, progChordBox;

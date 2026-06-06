@@ -31,6 +31,7 @@ target_sources(MorphOne PRIVATE
     Source/TheoryEngine.h
     Source/SmartArp.h
     Source/ProgressionEngine.h
+    Source/ChordDetector.h
 )
 
 target_compile_definitions(MorphOne PUBLIC

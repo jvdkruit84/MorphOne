@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <atomic>
 #include <map>
 #include <vector>
 #include <algorithm>
@@ -69,6 +70,35 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // Thread-safe note state for UI (audio thread writes, UI thread reads)
+    std::atomic<uint64_t> heldNotesBits[2] {};
+
+    void setNoteHeld(int midiNote, bool held) noexcept
+    {
+        if ((unsigned)midiNote >= 128u) return;
+        int w = midiNote >> 6;
+        uint64_t bit = uint64_t(1) << (midiNote & 63);
+        if (held)
+            heldNotesBits[w].fetch_or(bit, std::memory_order_relaxed);
+        else
+            heldNotesBits[w].fetch_and(~bit, std::memory_order_relaxed);
+    }
+
+    bool isNoteHeld(int midiNote) const noexcept
+    {
+        if ((unsigned)midiNote >= 128u) return false;
+        return (heldNotesBits[midiNote >> 6].load(std::memory_order_relaxed)
+                >> (midiNote & 63)) & 1u;
+    }
+
+    std::vector<int> getHeldNotes() const
+    {
+        std::vector<int> notes;
+        for (int i = 0; i < 128; ++i)
+            if (isNoteHeld(i)) notes.push_back(i);
+        return notes;
+    }
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
