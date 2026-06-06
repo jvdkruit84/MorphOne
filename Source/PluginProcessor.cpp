@@ -17,7 +17,11 @@ struct WavetableVoice : public juce::SynthesiserVoice
     float level        = 0.0f;
     int   numUnison    = 1;
     float unisonDetune = 0.0f;
-    int   midiNote     = -1;
+
+    // Portamento state
+    float portaTargetFreq  = 0.0f;
+    float portaCurrentFreq = 0.0f;
+    float portaCoeff       = 1.0f; // 1.0 = instant, <1 = smooth slide
 
     bool canPlaySound(juce::SynthesiserSound* s) override
     {
@@ -38,21 +42,23 @@ struct WavetableVoice : public juce::SynthesiserVoice
 
     void setADSR(const juce::ADSR::Parameters& p) { adsr.setParameters(p); }
 
+    void setPortamento(float timeSeconds, double sampleRate)
+    {
+        if (timeSeconds < 0.002f)
+            portaCoeff = 1.0f;
+        else
+            portaCoeff = std::exp(-1.0f / (float)(timeSeconds * sampleRate));
+    }
+
     void startNote(int midiNoteNumber, float velocity, juce::SynthesiserSound*, int) override
     {
-        midiNote = midiNoteNumber;
-        float baseFreq = (float)juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
-        float sr = (float)getSampleRate();
+        portaTargetFreq = (float)juce::MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+        if (portaCurrentFreq < 1.0f)
+            portaCurrentFreq = portaTargetFreq; // first note — no slide
 
-        for (int i = 0; i < numUnison; ++i)
-        {
-            oscillators[i].reset();
-            float spread = (numUnison > 1)
-                ? unisonDetune * (2.0f * i / (float)(numUnison - 1) - 1.0f)
-                : 0.0f;
-            float freq = baseFreq * std::pow(2.0f, spread / 12.0f);
-            oscillators[i].setFrequency(freq, sr);
-        }
+        float sr = (float)getSampleRate();
+        // Apply initial frequencies (portamento will update per-block if active)
+        updateOscillatorFrequencies(portaCurrentFreq, sr);
 
         level = velocity * 0.15f / std::sqrt((float)numUnison);
         adsr.setSampleRate(getSampleRate());
@@ -62,30 +68,55 @@ struct WavetableVoice : public juce::SynthesiserVoice
     void stopNote(float, bool allowTailOff) override
     {
         adsr.noteOff();
-        if (!allowTailOff) { clearCurrentNote(); adsr.reset(); }
+        if (!allowTailOff) { clearCurrentNote(); adsr.reset(); portaCurrentFreq = 0.0f; }
     }
 
     void pitchWheelMoved(int) override {}
     void controllerMoved(int, int) override {}
 
+    void updateOscillatorFrequencies(float freq, float sr)
+    {
+        for (int i = 0; i < numUnison; ++i)
+        {
+            float spread = (numUnison > 1)
+                ? unisonDetune * (2.0f * i / (float)(numUnison - 1) - 1.0f)
+                : 0.0f;
+            oscillators[i].setFrequency(freq * std::pow(2.0f, spread / 12.0f), sr);
+        }
+    }
+
     void renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples) override
     {
         if (!adsr.isActive()) return;
+        float sr = (float)getSampleRate();
 
-        while (--numSamples >= 0)
+        // Portamento: smooth frequency in sub-blocks of 16 samples
+        int remaining = numSamples;
+        while (remaining > 0)
         {
-            float sample = 0.0f;
-            for (int i = 0; i < numUnison; ++i)
-                sample += oscillators[i].getNextSample();
+            int block = juce::jmin(remaining, 16);
 
-            sample *= level * adsr.getNextSample();
+            if (portaCoeff < 0.9999f)
+            {
+                portaCurrentFreq += (1.0f - portaCoeff) * (portaTargetFreq - portaCurrentFreq);
+                updateOscillatorFrequencies(portaCurrentFreq, sr);
+            }
 
-            for (int ch = buffer.getNumChannels(); --ch >= 0;)
-                buffer.addSample(ch, startSample, sample);
-            ++startSample;
+            for (int s = 0; s < block; ++s)
+            {
+                float sample = 0.0f;
+                for (int i = 0; i < numUnison; ++i)
+                    sample += oscillators[i].getNextSample();
+
+                sample *= level * adsr.getNextSample();
+                for (int ch = buffer.getNumChannels(); --ch >= 0;)
+                    buffer.addSample(ch, startSample, sample);
+                ++startSample;
+            }
+            remaining -= block;
         }
 
-        if (!adsr.isActive()) clearCurrentNote();
+        if (!adsr.isActive()) { clearCurrentNote(); portaCurrentFreq = 0.0f; }
     }
 };
 
@@ -154,6 +185,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout MorphOneAudioProcessor::crea
     p.push_back(std::make_unique<juce::AudioParameterFloat>(
         "GAIN", "Gain", 0.0f, 1.0f, 0.8f));
 
+    // ── Mode ──
+    // 0=Lead 1=Bass 2=Melody 3=Arp 4=Pad
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "SYNTH_MODE", "Mode", 0, 4, 2));
+    p.push_back(std::make_unique<juce::AudioParameterInt>(
+        "OCTAVE", "Octave", -2, 2, 0));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "PORTA_TIME", "Portamento",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f, 0.3f), 0.0f));
+
     // ── Theory Engine ──
     p.push_back(std::make_unique<juce::AudioParameterInt>(
         "THEORY_KEY",  "Key",          0, 11, 0));
@@ -200,6 +241,7 @@ void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
     arp.prepare(sampleRate);
     progression.reset();
+    monoNoteStack.clear();
 
     scaleLockNoteMap.clear();
     chordModeNoteMap.clear();
@@ -213,7 +255,7 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    // ── Read synth params ──
+    // ── Read params ──
     float morph     = apvts.getRawParameterValue("MORPH")->load();
     float attack    = apvts.getRawParameterValue("ATTACK")->load();
     float decay     = apvts.getRawParameterValue("DECAY")->load();
@@ -228,36 +270,97 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     float reverbMix = apvts.getRawParameterValue("REVERB_MIX")->load();
     float gain      = apvts.getRawParameterValue("GAIN")->load();
 
-    // ── Read theory params ──
-    int   theoryKey  = (int)apvts.getRawParameterValue("THEORY_KEY")->load();
-    int   scaleIdx   = (int)apvts.getRawParameterValue("SCALE_IDX")->load();
-    bool  scaleLock  = apvts.getRawParameterValue("SCALE_LOCK")->load() > 0.5f;
-    int   chordType  = (int)apvts.getRawParameterValue("CHORD_TYPE")->load();
-    int   chordInv   = (int)apvts.getRawParameterValue("CHORD_INV")->load();
-    bool  arpOn      = apvts.getRawParameterValue("ARP_ON")->load() > 0.5f;
-    int   arpDir     = (int)apvts.getRawParameterValue("ARP_DIR")->load();
-    int   arpSpeed   = (int)apvts.getRawParameterValue("ARP_SPEED")->load();
-    float arpGate    = apvts.getRawParameterValue("ARP_GATE")->load();
-    int   progIdx    = (int)apvts.getRawParameterValue("PROG_IDX")->load();
-    int   progChord  = (int)apvts.getRawParameterValue("PROG_CHORD")->load();
+    int   synthMode = (int)apvts.getRawParameterValue("SYNTH_MODE")->load();
+    int   octave    = (int)apvts.getRawParameterValue("OCTAVE")->load();
+    float portaTime = apvts.getRawParameterValue("PORTA_TIME")->load();
 
-    int rootMidi = 60 + theoryKey; // root note, middle octave
+    int   theoryKey = (int)apvts.getRawParameterValue("THEORY_KEY")->load();
+    int   scaleIdx  = (int)apvts.getRawParameterValue("SCALE_IDX")->load();
+    bool  scaleLock = apvts.getRawParameterValue("SCALE_LOCK")->load() > 0.5f;
+    int   chordType = (int)apvts.getRawParameterValue("CHORD_TYPE")->load();
+    int   chordInv  = (int)apvts.getRawParameterValue("CHORD_INV")->load();
+    bool  arpOn     = apvts.getRawParameterValue("ARP_ON")->load() > 0.5f;
+    int   arpDir    = (int)apvts.getRawParameterValue("ARP_DIR")->load();
+    int   arpSpeed  = (int)apvts.getRawParameterValue("ARP_SPEED")->load();
+    float arpGate   = apvts.getRawParameterValue("ARP_GATE")->load();
+    int   progIdx   = (int)apvts.getRawParameterValue("PROG_IDX")->load();
+    int   progChord = (int)apvts.getRawParameterValue("PROG_CHORD")->load();
 
-    // ── Playhead info ──
-    double ppq = 0.0, bpm = 120.0;
-    bool playing = false;
-    if (auto* ph = getPlayHead())
+    int rootMidi = 60 + theoryKey;
+
+    // ── Polyphony per mode ──
+    // 0=Lead 1=Bass → mono, 2=Melody → 4, 3=Arp → 4, 4=Pad → 8
+    static const int modeVoices[] = { 1, 1, 4, 4, 8 };
+    int maxVoices = modeVoices[juce::jlimit(0, 4, synthMode)];
+    bool isMono   = (maxVoices == 1);
+    int  priority = (synthMode == 1) ? 1 : 0; // Bass=lowest, Lead=last
+
+    // ── Octave shift ──
+    int octaveShift = octave * 12;
+    if (octaveShift != 0)
     {
-        juce::AudioPlayHead::CurrentPositionInfo info;
-        if (ph->getCurrentPosition(info))
+        juce::MidiBuffer shifted;
+        for (const auto& m : midi)
         {
-            ppq     = info.ppqPosition;
-            bpm     = info.bpm > 0.0 ? info.bpm : 120.0;
-            playing = info.isPlaying;
+            auto msg = m.getMessage();
+            if (msg.isNoteOn() || msg.isNoteOff())
+            {
+                int n = juce::jlimit(0, 127, msg.getNoteNumber() + octaveShift);
+                if (msg.isNoteOn())
+                    msg = juce::MidiMessage::noteOn(msg.getChannel(), n, msg.getVelocity());
+                else
+                    msg = juce::MidiMessage::noteOff(msg.getChannel(), n, msg.getVelocity());
+            }
+            shifted.addEvent(msg, m.samplePosition);
         }
+        midi.swapWith(shifted);
     }
 
-    // ── Theory MIDI pipeline ──
+    // ── Mono mode processing ──
+    if (isMono)
+    {
+        juce::MidiBuffer monoOut;
+        for (const auto& m : midi)
+        {
+            auto msg = m.getMessage();
+            int  sp  = m.samplePosition;
+
+            if (msg.isNoteOn())
+            {
+                int prevTop = monoNoteStack.top(priority).note;
+                monoNoteStack.noteOn(msg.getNoteNumber(), msg.getVelocity());
+                int newTop = monoNoteStack.top(priority).note;
+
+                if (prevTop >= 0 && prevTop != newTop)
+                    monoOut.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), prevTop), sp);
+                monoOut.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), newTop, msg.getVelocity()), sp);
+            }
+            else if (msg.isNoteOff())
+            {
+                int prevTop = monoNoteStack.top(priority).note;
+                monoNoteStack.noteOff(msg.getNoteNumber());
+                int newTop = monoNoteStack.top(priority).note;
+
+                if (msg.getNoteNumber() == prevTop)
+                {
+                    monoOut.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), prevTop), sp);
+                    if (!monoNoteStack.empty())
+                    {
+                        auto e = monoNoteStack.top(priority);
+                        monoOut.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), newTop, e.vel), sp);
+                    }
+                }
+                // else: a non-playing note was released — ignore
+            }
+            else
+            {
+                monoOut.addEvent(msg, sp);
+            }
+        }
+        midi.swapWith(monoOut);
+    }
+
+    // ── Theory pipeline ──
     if (scaleLock)
         TheoryEngine::applyScaleLock(midi, rootMidi, scaleIdx, scaleLockNoteMap);
 
@@ -272,7 +375,14 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         arpCfg.gate      = arpGate;
         arpCfg.rootMidi  = rootMidi;
         arpCfg.scaleIdx  = scaleIdx;
-        arp.processBlock(midi, buffer.getNumSamples(), bpm, arpCfg);
+
+        double bpmArp = 120.0;
+        if (auto* ph = getPlayHead())
+        {
+            juce::AudioPlayHead::CurrentPositionInfo info;
+            if (ph->getCurrentPosition(info)) bpmArp = info.bpm > 0.0 ? info.bpm : 120.0;
+        }
+        arp.processBlock(midi, buffer.getNumSamples(), bpmArp, arpCfg);
     }
     else if (chordType > 0)
     {
@@ -281,17 +391,29 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
     if (progIdx > 0)
     {
+        double ppq = 0.0, bpmProg = 120.0;
+        bool playing = false;
+        if (auto* ph = getPlayHead())
+        {
+            juce::AudioPlayHead::CurrentPositionInfo info;
+            if (ph->getCurrentPosition(info))
+            {
+                ppq     = info.ppqPosition;
+                bpmProg = info.bpm > 0.0 ? info.bpm : 120.0;
+                playing = info.isPlaying;
+            }
+        }
         ProgressionEngine::Config progCfg;
         progCfg.active    = true;
         progCfg.progIdx   = progIdx;
         progCfg.rootMidi  = rootMidi;
         progCfg.chordType = progChord;
         progCfg.velocity  = 0.7f;
-        progression.processBlock(midi, ppq, playing, bpm,
+        progression.processBlock(midi, ppq, playing, bpmProg,
                                  buffer.getNumSamples(), progCfg);
     }
 
-    // ── LFO modulates morph ──
+    // ── LFO → morph ──
     float lfo = std::sin(lfoPhase) * 0.5f + 0.5f;
     float morphMod = juce::jlimit(0.0f, 1.0f, morph + lfo * lfoDepth * (1.0f - morph));
     lfoPhase += juce::MathConstants<float>::twoPi * lfoRate
@@ -299,14 +421,19 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     if (lfoPhase >= juce::MathConstants<float>::twoPi)
         lfoPhase -= juce::MathConstants<float>::twoPi;
 
-    // ── Update voice parameters ──
+    // ── Pad mode: force more unison ──
+    int effectiveUnison = unison;
+    if (synthMode == 4) effectiveUnison = juce::jmax(unison, 4); // Pad: minimum 4 voices
+
+    // ── Update voice params ──
     juce::ADSR::Parameters adsrParams { attack, decay, sustain, release };
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* v = dynamic_cast<WavetableVoice*>(synth.getVoice(i)))
         {
             v->setMorph(morphMod);
             v->setADSR(adsrParams);
-            v->setUnison(unison, detune);
+            v->setUnison(effectiveUnison, detune);
+            v->setPortamento(portaTime * 0.5f, currentSampleRate); // max 500ms
         }
 
     synth.renderNextBlock(buffer, midi, 0, buffer.getNumSamples());

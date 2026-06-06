@@ -1,9 +1,44 @@
 #pragma once
 #include <JuceHeader.h>
 #include <map>
+#include <vector>
+#include <algorithm>
 #include "TheoryEngine.h"
 #include "SmartArp.h"
 #include "ProgressionEngine.h"
+
+// Mono note stack — last-note or lowest-note priority
+struct MonoNoteStack
+{
+    struct Entry { int note; uint8_t vel; };
+    std::vector<Entry> held;
+
+    void noteOn(int n, uint8_t v)
+    {
+        held.erase(std::remove_if(held.begin(), held.end(),
+            [n](const Entry& e){ return e.note == n; }), held.end());
+        held.push_back({n, v});
+    }
+
+    void noteOff(int n)
+    {
+        held.erase(std::remove_if(held.begin(), held.end(),
+            [n](const Entry& e){ return e.note == n; }), held.end());
+    }
+
+    // priority: 0 = last pressed, 1 = lowest note
+    Entry top(int priority) const
+    {
+        if (held.empty()) return {-1, 0};
+        if (priority == 1)
+            return *std::min_element(held.begin(), held.end(),
+                [](const Entry& a, const Entry& b){ return a.note < b.note; });
+        return held.back();
+    }
+
+    bool empty() const { return held.empty(); }
+    void clear()       { held.clear(); }
+};
 
 class MorphOneAudioProcessor : public juce::AudioProcessor
 {
@@ -45,6 +80,8 @@ private:
 
     SmartArp          arp;
     ProgressionEngine progression;
+
+    MonoNoteStack monoNoteStack;
 
     std::map<int, int>               scaleLockNoteMap;
     std::map<int, std::vector<int>>  chordModeNoteMap;
