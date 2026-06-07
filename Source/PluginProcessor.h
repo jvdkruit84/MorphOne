@@ -100,6 +100,8 @@ public:
         return notes;
     }
 
+    juce::MidiMessageCollector uiMidiCollector;
+
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
     void initialiseSynth();

@@ -214,156 +214,108 @@ void LiveChordPanel::paint(juce::Graphics& g)
     }
 }
 
-// ── NextSuggestionsPanel paint ────────────────────────────────────────────────
-void NextSuggestionsPanel::paint(juce::Graphics& g)
+// ── NextChordPanel ────────────────────────────────────────────────────────────
+void NextChordPanel::rebuildButtons()
 {
-    auto lb = getLocalBounds();
+    if (getWidth() <= 0 || getHeight() <= 0) return;
 
     int keyParam = (int)apvts.getRawParameterValue("THEORY_KEY")->load();
     int si       = (int)apvts.getRawParameterValue("SCALE_IDX")->load();
 
+    auto diatonic = ChordDetector::getDiatonicChords(keyParam, si);
+    if ((int)diatonic.size() > 6) diatonic.resize(6);
+
     auto held  = proc.getHeldNotes();
     auto chord = ChordDetector::detect(held, keyParam, si);
+    int curRoot = chord.valid ? chord.rootSemitone : keyParam;
+    auto sugg   = ChordDetector::getNextSuggestions(curRoot, keyParam, si, 6);
 
-    int currentRoot = chord.valid ? chord.rootSemitone : keyParam;
-    auto suggestions = ChordDetector::getNextSuggestions(currentRoot, keyParam, si, 3);
+    const float pad = 8.f, gap = 6.f;
+    int n = (int)diatonic.size();
+    if (n == 0) { buttons.clear(); return; }
+    int cols = 3;
+    int rows = (n + cols - 1) / cols;
+    float bw = ((float)getWidth()  - pad * 2.f - gap * (cols - 1)) / (float)cols;
+    float bh = ((float)getHeight() - pad * 2.f - gap * (rows - 1)) / (float)rows;
 
-    // Header label
-    g.setFont(juce::FontOptions(8.f, juce::Font::bold));
-    g.setColour(juce::Colour(Pal::textLow));
-    g.drawText("VOLGENDE AKKOORDEN", 8, 2, lb.getWidth() - 16, 14, juce::Justification::centredLeft);
-
-    if (suggestions.empty()) return;
-
-    float cardH   = lb.getHeight() - 18.f;
-    float totalW  = lb.getWidth() - 16.f;
-    float cardW   = totalW / 3.f - 3.f;
-
-    for (int i = 0; i < (int)suggestions.size() && i < 3; ++i)
+    buttons.clear();
+    buttons.reserve((size_t)n);
+    for (int i = 0; i < n; ++i)
     {
-        const auto& s = suggestions[i];
-        float cx = 8.f + i * (cardW + 4.f);
-        juce::Rectangle<float> card(cx, 18.f, cardW, cardH);
-
-        juce::ColourGradient cg(juce::Colour(0xff182038), cx, 18.f,
-                                juce::Colour(0xff0e1020), cx, 18.f + cardH, false);
-        g.setGradientFill(cg);
-        g.fillRoundedRectangle(card, 5.f);
-        g.setColour(juce::Colour(Pal::border));
-        g.drawRoundedRectangle(card.reduced(0.5f), 5.f, 1.0f);
-
-        // Degree tag
-        g.setFont(juce::FontOptions(11.f, juce::Font::bold));
-        g.setColour(juce::Colour(Pal::accentHi));
-        g.drawText(s.degree, card.reduced(5.f, 3.f), juce::Justification::topLeft);
-
-        // Chord name
-        g.setFont(juce::FontOptions(14.f, juce::Font::bold));
-        g.setColour(juce::Colour(Pal::textHi));
-        g.drawText(s.name, card.reduced(5.f, 2.f), juce::Justification::centred);
+        int col = i % cols, row = i / cols;
+        ChordBtn btn;
+        btn.bounds = { pad + col * (bw + gap), pad + row * (bh + gap), bw, bh };
+        btn.chord  = diatonic[i];
+        for (const auto& s : sugg)
+            if (s.rootSemitone == diatonic[i].rootSemitone) { btn.isSuggested = true; break; }
+        btn.midiNotes = ChordDetector::getChordMidiNotes(diatonic[i]);
+        buttons.push_back(std::move(btn));
     }
 }
 
-// ── CoachDisplay paint ────────────────────────────────────────────────────────
-void CoachDisplay::paint(juce::Graphics& g)
+void NextChordPanel::paint(juce::Graphics& g)
 {
-    int si   = (int)apvts.getRawParameterValue("SCALE_IDX")->load();
-    int key  = (int)apvts.getRawParameterValue("THEORY_KEY")->load();
-    int ct   = (int)apvts.getRawParameterValue("CHORD_TYPE")->load();
-    int prog = (int)apvts.getRawParameterValue("PROG_IDX")->load();
-    bool lock = apvts.getRawParameterValue("SCALE_LOCK")->load() > 0.5f;
-    bool arp  = apvts.getRawParameterValue("ARP_ON")->load() > 0.5f;
-    int  mode = (int)apvts.getRawParameterValue("SYNTH_MODE")->load();
+    rebuildButtons();
+    if (buttons.empty()) return;
 
-    auto lb = getLocalBounds();
-    float x = 8.f, bw = lb.getWidth() - 16.f;
-    float y = 6.f;
-
-    // Mood badge (top right)
-    Mood mood = getMood(si, ct);
-    auto mi   = getMoodInfo(mood);
-    float badgeW = 88.f;
-    juce::Rectangle<float> badge(x + bw - badgeW, y + 1.f, badgeW, 18.f);
-    g.setColour(mi.colour.withAlpha(0.18f));
-    g.fillRoundedRectangle(badge, 9.f);
-    g.setColour(mi.colour.withAlpha(0.7f));
-    g.drawRoundedRectangle(badge.reduced(0.5f), 9.f, 0.7f);
-    g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
-    g.setColour(mi.colour);
-    g.drawText(mi.name, badge, juce::Justification::centred);
-
-    // Feature badges (top left)
-    float bx = x;
-    auto drawBadge = [&](const juce::String& txt, juce::Colour col)
+    for (const auto& btn : buttons)
     {
-        float tw = (float)txt.length() * 6.0f + 10.f;
-        juce::Rectangle<float> bb(bx, y + 1.f, tw, 14.f);
-        g.setColour(col.withAlpha(0.2f));
-        g.fillRoundedRectangle(bb, 7.f);
-        g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
-        g.setColour(col.withAlpha(0.85f));
-        g.drawText(txt, bb, juce::Justification::centred);
-        bx += tw + 4.f;
-    };
-    if (lock) drawBadge("SCALE LOCK", juce::Colour(Pal::accent));
-    if (arp)  drawBadge("ARP ON",     juce::Colour(0xff4a9eff));
-    if (ct>0) drawBadge(TheoryEngine::CHORD_NAMES[ct], juce::Colour(0xff44cc88));
+        const auto& b = btn.bounds;
+        bool hi = btn.isSuggested;
 
-    y += 26.f;
+        juce::ColourGradient bg(
+            juce::Colour(hi ? 0xff162440u : 0xff111820u), b.getX(), b.getY(),
+            juce::Colour(0xff080c14u), b.getX(), b.getBottom(), false);
+        g.setGradientFill(bg);
+        g.fillRoundedRectangle(b, 7.f);
 
-    // Tension bar
-    float ten = getTension(si, ct);
-    g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
-    g.setColour(juce::Colour(Pal::textLow));
-    g.drawText("TENSION", x, y, 52.f, 12.f, juce::Justification::centredLeft);
-    juce::Rectangle<float> mbg(x + 56.f, y + 1.f, bw - 56.f, 10.f);
-    g.setColour(juce::Colour(0xff0a0a1e));
-    g.fillRoundedRectangle(mbg, 5.f);
-    if (ten > 0.01f)
-    {
-        juce::Rectangle<float> mfill(mbg.getX(), mbg.getY(), mbg.getWidth() * ten, mbg.getHeight());
-        juce::ColourGradient tg(
-            ten < 0.4f ? juce::Colour(0xff2a8a3a) :
-            ten < 0.7f ? juce::Colour(0xffcc8820) : juce::Colour(0xffcc3a2a),
-            mfill.getX(), 0.f, juce::Colour(Pal::accent), mfill.getRight(), 0.f, false);
-        g.setGradientFill(tg);
-        g.fillRoundedRectangle(mfill, 5.f);
-    }
-    y += 20.f;
+        g.setColour(juce::Colour(hi ? Pal::accentHi : Pal::border));
+        g.drawRoundedRectangle(b.reduced(0.5f), 7.f, hi ? 1.2f : 0.7f);
 
-    // Progression badge
-    if (prog > 0)
-    {
-        juce::Rectangle<float> pb(x, y, bw, 16.f);
-        g.setColour(juce::Colour(Pal::accent).withAlpha(0.18f));
-        g.fillRoundedRectangle(pb, 4.f);
-        g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
-        g.setColour(juce::Colour(Pal::accentHi));
-        g.drawText(juce::String("▶  ") + TheoryEngine::ARTIST_PROGS[prog].name + "  progressie",
-                   pb.reduced(4.f, 0.f), juce::Justification::centredLeft);
-        y += 20.f;
-    }
+        // Degree (top centre)
+        juce::Rectangle<float> degR(b.getX() + 4.f, b.getY() + 6.f, b.getWidth() - 8.f, 16.f);
+        g.setFont(juce::FontOptions(10.f, juce::Font::bold));
+        g.setColour(juce::Colour(hi ? Pal::accentHi : Pal::textLow));
+        g.drawText(btn.chord.degree, degR.toNearestInt(), juce::Justification::centred);
 
-    // Coach tip box
-    float tipH = lb.getBottom() - y - 6.f;
-    if (tipH > 20.f)
-    {
-        juce::Rectangle<float> tipBox(x, y, bw, tipH);
-        g.setColour(juce::Colour(0xff0a0c18));
-        g.fillRoundedRectangle(tipBox, 4.f);
-        g.setColour(juce::Colour(Pal::border));
-        g.drawRoundedRectangle(tipBox.reduced(0.5f), 4.f, 0.6f);
+        // Root note name (large, centre)
+        juce::String notePart = btn.chord.name.upToFirstOccurrenceOf(" ", false, false);
+        juce::Rectangle<float> nameR(b.getX() + 4.f, b.getY() + 24.f,
+                                     b.getWidth() - 8.f, b.getHeight() - 46.f);
+        g.setFont(juce::FontOptions(34.f, juce::Font::bold));
+        g.setColour(juce::Colour(hi ? Pal::textHi : Pal::textMid));
+        g.drawText(notePart, nameR.toNearestInt(), juce::Justification::centred);
 
-        g.setFont(juce::FontOptions(7.5f, juce::Font::bold));
-        g.setColour(juce::Colour(Pal::accentHi));
-        g.drawText("♪  TIP", tipBox.reduced(5.f, 3.f), juce::Justification::topLeft);
-
+        // Quality (bottom centre)
+        juce::String qual = btn.chord.name.fromFirstOccurrenceOf(" ", false, false).toLowerCase();
+        juce::Rectangle<float> qualR(b.getX() + 4.f, b.getBottom() - 20.f, b.getWidth() - 8.f, 15.f);
         g.setFont(juce::FontOptions(9.5f));
-        g.setColour(juce::Colour(Pal::textHi));
-        g.drawFittedText(getCoachTip(key, si, ct, lock, arp, prog, mode),
-                         tipBox.reduced(6.f, 4.f).withTrimmedTop(14.f).toNearestInt(),
-                         juce::Justification::topLeft, 6);
+        g.setColour(juce::Colour(hi ? Pal::accentHi : Pal::textLow));
+        g.drawText(qual, qualR.toNearestInt(), juce::Justification::centred);
     }
+}
+
+void NextChordPanel::mouseDown(const juce::MouseEvent& e)
+{
+    auto pos = e.getPosition().toFloat();
+    for (const auto& btn : buttons)
+        if (btn.bounds.contains(pos)) { triggerChord(btn.midiNotes); return; }
+}
+
+void NextChordPanel::triggerChord(const std::vector<int>& notes)
+{
+    for (int note : notes)
+        proc.uiMidiCollector.addMessageToQueue(
+            juce::MidiMessage::noteOn(1, note, (uint8_t)90));
+
+    juce::Component::SafePointer<NextChordPanel> safeThis(this);
+    juce::MessageManager::callAfterDelay(700, [safeThis, notes]()
+    {
+        if (safeThis == nullptr) return;
+        for (int note : notes)
+            safeThis->proc.uiMidiCollector.addMessageToQueue(
+                juce::MidiMessage::noteOff(1, note, (uint8_t)0));
+    });
 }
 
 // ── Editor helpers ────────────────────────────────────────────────────────────
@@ -424,8 +376,7 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
       waveDisplay(p.apvts),
       liveChordPanel(p, p.apvts),
       visualKeyboard(p, p.apvts),
-      nextSuggestions(p, p.apvts),
-      coachDisplay(p.apvts)
+      nextChordPanel(p, p.apvts)
 {
     setLookAndFeel(&morphLAF);
     auto& apvts = audioProcessor.apvts;
@@ -470,8 +421,7 @@ MorphOneAudioProcessorEditor::MorphOneAudioProcessorEditor(MorphOneAudioProcesso
     addAndMakeVisible(waveDisplay);
     addAndMakeVisible(liveChordPanel);
     addAndMakeVisible(visualKeyboard);
-    addAndMakeVisible(nextSuggestions);
-    addAndMakeVisible(coachDisplay);
+    addAndMakeVisible(nextChordPanel);
 
     presetBox.addItem("-- Select Preset --", 1);
     const auto& ps = PresetManager::getPresets();
@@ -670,10 +620,9 @@ void MorphOneAudioProcessorEditor::resized()
     gainKnob  .setBounds(298, 514, 136, 60);
 
     // Theory panel (right side)
-    liveChordPanel  .setBounds(456,  90, 492, 118);
-    visualKeyboard  .setBounds(456, 212, 492,  90);
-    nextSuggestions .setBounds(456, 306, 492,  72);
-    coachDisplay    .setBounds(456, 382, 492, 196);
+    liveChordPanel .setBounds(456,  90, 492, 118);
+    visualKeyboard .setBounds(456, 212, 492,  90);
+    nextChordPanel .setBounds(456, 306, 492, 272);
 
     // Theory strip (y=584)
     const int sy     = 584;

@@ -126,6 +126,18 @@ public:
         return out;
     }
 
+    // ── MIDI notes for a diatonic chord (default octave 4) ───────
+    static std::vector<int> getChordMidiNotes(const DiatonicChord& dc, int octave = 4)
+    {
+        int root = (octave + 1) * 12 + dc.rootSemitone;
+        const auto& iv = TheoryEngine::CHORD_INTERVALS[
+            juce::jlimit(0, TheoryEngine::NUM_CHORD_TYPES - 1, dc.chordTypeIdx)];
+        std::vector<int> notes;
+        for (int i : iv)
+            notes.push_back(juce::jlimit(0, 127, root + i));
+        return notes;
+    }
+
     // ── Next chord suggestions from current root ──────────────────────
     static std::vector<DiatonicChord> getNextSuggestions(int currentRootSemi,
                                                           int keyRoot,

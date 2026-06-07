@@ -245,6 +245,7 @@ void MorphOneAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 
     heldNotesBits[0].store(0, std::memory_order_relaxed);
     heldNotesBits[1].store(0, std::memory_order_relaxed);
+    uiMidiCollector.reset(sampleRate);
 
     scaleLockNoteMap.clear();
     chordModeNoteMap.clear();
@@ -290,6 +291,13 @@ void MorphOneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     int   progChord = (int)apvts.getRawParameterValue("PROG_CHORD")->load();
 
     int rootMidi = 60 + theoryKey;
+
+    // ── Inject UI-triggered chord notes (from chord buttons) ──
+    {
+        juce::MidiBuffer uiBuffer;
+        uiMidiCollector.removeNextBlockOfMessages(uiBuffer, buffer.getNumSamples());
+        midi.addEvents(uiBuffer, 0, buffer.getNumSamples(), 0);
+    }
 
     // ── Capture raw note state for UI (before octave shift) ──
     for (const auto& m : midi)

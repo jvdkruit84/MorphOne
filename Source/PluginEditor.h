@@ -254,92 +254,30 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
 };
 
-// ── Next chord suggestions ────────────────────────────────────────────────────
-class NextSuggestionsPanel : public juce::Component, private juce::Timer
+// ── Clickable chord grid — shows all diatonic chords, click to preview ───────
+class NextChordPanel : public juce::Component, private juce::Timer
 {
 public:
-    NextSuggestionsPanel(MorphOneAudioProcessor& proc, juce::AudioProcessorValueTreeState& a)
+    NextChordPanel(MorphOneAudioProcessor& proc, juce::AudioProcessorValueTreeState& a)
         : proc(proc), apvts(a) { startTimerHz(4); }
     void timerCallback() override { repaint(); }
     void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& e) override;
 
 private:
     MorphOneAudioProcessor& proc;
     juce::AudioProcessorValueTreeState& apvts;
-};
 
-// ── Theory Coach display (mood / tension / tips) ──────────────────────────────
-class CoachDisplay : public juce::Component, private juce::Timer
-{
-public:
-    CoachDisplay(juce::AudioProcessorValueTreeState& a) : apvts(a) { startTimerHz(4); }
-    void timerCallback() override { repaint(); }
-    void paint(juce::Graphics& g) override;
+    struct ChordBtn {
+        juce::Rectangle<float> bounds;
+        ChordDetector::DiatonicChord chord;
+        bool isSuggested = false;
+        std::vector<int> midiNotes;
+    };
+    std::vector<ChordBtn> buttons;
 
-private:
-    juce::AudioProcessorValueTreeState& apvts;
-
-    enum class Mood { Uplifting, Melancholic, Tensive, Nostalgic };
-
-    Mood getMood(int scaleIdx, int chordType) const
-    {
-        static const Mood sm[] = {
-            Mood::Melancholic, Mood::Nostalgic,  Mood::Tensive,    Mood::Uplifting,
-            Mood::Uplifting,   Mood::Uplifting,  Mood::Melancholic,Mood::Nostalgic,
-            Mood::Melancholic, Mood::Uplifting,  Mood::Tensive,    Mood::Tensive,
-            Mood::Tensive,     Mood::Tensive,    Mood::Nostalgic
-        };
-        Mood base = sm[juce::jlimit(0, 14, scaleIdx)];
-        if (chordType == 3 || chordType == 4) return Mood::Tensive;
-        if (chordType == 7 && base == Mood::Uplifting) return Mood::Nostalgic;
-        return base;
-    }
-
-    struct MoodInfo { const char* name; juce::Colour colour; };
-    MoodInfo getMoodInfo(Mood m) const
-    {
-        switch (m) {
-            case Mood::Uplifting:   return { "UPLIFTING",   juce::Colour(0xff4a9eff) };
-            case Mood::Melancholic: return { "MELANCHOLIC", juce::Colour(0xff4060d8) };
-            case Mood::Tensive:     return { "TENSIVE",     juce::Colour(0xffee6633) };
-            case Mood::Nostalgic:   return { "NOSTALGIC",   juce::Colour(0xff44cc88) };
-        }
-        return { "", juce::Colour() };
-    }
-
-    float getTension(int si, int ct) const
-    {
-        static const float ct_t[] = { 0.1f,0.1f,0.2f,0.5f,0.6f,0.3f,0.4f,0.3f,0.7f,0.0f,0.1f };
-        float t = ct_t[juce::jlimit(0, 10, ct)];
-        if (si == 10) t = juce::jmax(t, 0.6f);
-        if (si == 11) t = juce::jmax(t, 0.7f);
-        if (si == 14) t = 0.9f;
-        return t;
-    }
-
-    juce::String getCoachTip(int key, int si, int ct, bool lock, bool arpOn, int prog, int mode) const
-    {
-        juce::ignoreUnused(key, mode);
-        if (prog > 0)
-            return juce::String("Progressie: ") + TheoryEngine::ARTIST_PROGS[prog].name
-                   + " speelt 4 akkoorden gesynchroniseerd met de DAW";
-        if (arpOn && lock)
-            return "Scale Lock + Arp: elke gegenereerde noot is gegarandeerd in toonsoort";
-        if (ct == 4) return "Sus4 creëert spanning — lost mooi op naar major of minor";
-        if (ct == 8) return "Dominant 7 wil sterk oplossen naar de tonica — gebruik voor drops";
-        if (ct == 6) return "Minor 7 voegt diepe melancholie toe — typisch voor deep house pads";
-        if (ct == 7) return "Major 7 klinkt dromerig en nostalgisch — perfect voor atmosferische pads";
-        if (ct == 5) return "Add9 voegt openheid en kleur toe zonder de 7de in te brengen";
-        if (si == 1) return "Dorisch: zelfde grondtoon als mineur maar met een bright ♭7 — jazz & soul";
-        if (si == 6) return "Harmonisch mineur: de ♯7 geeft een klassiek drama-effect";
-        if (si == 10)return "Blues: gebruik de ♭5 (blue note) spaarzaam voor maximaal effect";
-        if (si == 11)return "Frygisch dominant: Spaans / Arabisch klankkleur — intense spanning";
-        if (si == 3) return "Lydisch: de ♯4 geeft een drijvend, filmisch gevoel — Hans Zimmer";
-        if (!lock)   return "Tip: activeer Scale Lock om altijd in toonsoort te spelen";
-        if (arpOn)   return "Arp actief — kies een richting en pas de Gate aan voor karakter";
-        return juce::String("Alle noten klinken goed in ") + TheoryEngine::SCALE_NAMES[si]
-               + " — verken de akkoordmodi voor meer kleur";
-    }
+    void rebuildButtons();
+    void triggerChord(const std::vector<int>& notes);
 };
 
 // ── Editor ────────────────────────────────────────────────────────────────────
@@ -371,8 +309,7 @@ private:
     WavetableDisplay     waveDisplay;
     LiveChordPanel       liveChordPanel;
     VisualKeyboard       visualKeyboard;
-    NextSuggestionsPanel nextSuggestions;
-    CoachDisplay         coachDisplay;
+    NextChordPanel       nextChordPanel;
 
     KnobWithLabel morphKnob    { "Morph"   };
     KnobWithLabel cutoffKnob   { "Cutoff"  };
