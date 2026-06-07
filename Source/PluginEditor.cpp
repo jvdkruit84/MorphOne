@@ -309,7 +309,7 @@ void NextChordPanel::triggerChord(const std::vector<int>& notes)
             juce::MidiMessage::noteOn(1, note, (uint8_t)90));
 
     juce::Component::SafePointer<NextChordPanel> safeThis(this);
-    juce::MessageManager::callAfterDelay(700, [safeThis, notes]()
+    juce::Timer::callAfterDelay(700, [safeThis, notes]()
     {
         if (safeThis == nullptr) return;
         for (int note : notes)
